@@ -53,23 +53,31 @@ export const THRESHOLDS = {
   responseFloor: envNumber("THRESHOLD_RESPONSE_FLOOR", 0.7), // 7-day response rate below this = data warning
 };
 
-/** Human-readable docs for the /about page — one row per tunable threshold. */
+export type Thresholds = { [K in keyof typeof THRESHOLDS]: number };
+
+/**
+ * Docs + validation bounds for the /about settings panel — one row per
+ * tunable threshold. min/max/step also drive the form inputs.
+ */
 export const THRESHOLD_DOCS: {
-  key: keyof typeof THRESHOLDS;
+  key: keyof Thresholds;
   envVar: string;
   label: string;
   default: number;
+  min: number;
+  max: number;
+  step: number;
   unit?: string;
 }[] = [
-  { key: "structuralLine", envVar: "THRESHOLD_STRUCTURAL_LINE", label: "Team average below this = an overloaded day", default: 5 },
-  { key: "structuralDays", envVar: "THRESHOLD_STRUCTURAL_DAYS", label: "...on this many of the last 10 working days triggers Hire", default: 7 },
-  { key: "minHistoryDays", envVar: "THRESHOLD_MIN_HISTORY_DAYS", label: "Working days of history required before structural signals unlock", default: 10 },
-  { key: "strainAvg", envVar: "THRESHOLD_STRAIN_AVG", label: "Individual 5-day average at/below this = personal strain", default: 3.5 },
-  { key: "strainGap", envVar: "THRESHOLD_STRAIN_GAP", label: "...while the team sits at least this many points higher, triggers Rebalance", default: 2 },
-  { key: "themeShare", envVar: "THRESHOLD_THEME_SHARE", label: "Share of low-capacity reports one theme must dominate to trigger Automate", default: 0.4, unit: "fraction, 0.4 = 40%" },
-  { key: "themeMinCount", envVar: "THRESHOLD_THEME_MIN_COUNT", label: "Minimum occurrences of a theme before it can trigger Automate", default: 3 },
-  { key: "responseFloor", envVar: "THRESHOLD_RESPONSE_FLOOR", label: "7-day response rate floor before a Data Health warning fires", default: 0.7, unit: "fraction, 0.7 = 70%" },
-  { key: "strainZone", envVar: "THRESHOLD_STRAIN_ZONE", label: "Capacity at/below this = the strain zone (heatmap color, Watch signal, KPI tile)", default: 3 },
+  { key: "structuralLine", envVar: "THRESHOLD_STRUCTURAL_LINE", label: "Team average below this = an overloaded day", default: 5, min: 1, max: 10, step: 0.5 },
+  { key: "structuralDays", envVar: "THRESHOLD_STRUCTURAL_DAYS", label: "...on this many of the last 10 working days triggers Hire", default: 7, min: 1, max: 10, step: 1 },
+  { key: "minHistoryDays", envVar: "THRESHOLD_MIN_HISTORY_DAYS", label: "Working days of history required before structural signals unlock", default: 10, min: 1, max: 60, step: 1 },
+  { key: "strainAvg", envVar: "THRESHOLD_STRAIN_AVG", label: "Individual 5-day average at/below this = personal strain", default: 3.5, min: 1, max: 10, step: 0.5 },
+  { key: "strainGap", envVar: "THRESHOLD_STRAIN_GAP", label: "...while the team sits at least this many points higher, triggers Rebalance", default: 2, min: 0, max: 9, step: 0.5 },
+  { key: "themeShare", envVar: "THRESHOLD_THEME_SHARE", label: "Share of low-capacity reports one theme must dominate to trigger Automate", default: 0.4, min: 0.05, max: 1, step: 0.05, unit: "0.4 = 40%" },
+  { key: "themeMinCount", envVar: "THRESHOLD_THEME_MIN_COUNT", label: "Minimum occurrences of a theme before it can trigger Automate", default: 3, min: 1, max: 50, step: 1 },
+  { key: "responseFloor", envVar: "THRESHOLD_RESPONSE_FLOOR", label: "7-day response rate floor before a Data Health warning fires", default: 0.7, min: 0.1, max: 1, step: 0.05, unit: "0.7 = 70%" },
+  { key: "strainZone", envVar: "THRESHOLD_STRAIN_ZONE", label: "Capacity at/below this = the strain zone (heatmap color, Watch signal, KPI tile)", default: 3, min: 1, max: 10, step: 1 },
 ];
 
 // ── Reason themes (keyword v1; an LLM pass can replace this later) ─────────
@@ -154,32 +162,33 @@ function avg(nums: number[]): number | null {
 export function computeSignals(
   members: MemberSeries[],
   dates: string[],
-  activeMemberCount: number
+  activeMemberCount: number,
+  T: Thresholds = THRESHOLDS
 ): Signal[] {
   const signals: Signal[] = [];
   const daily = teamAverageByDate(members, dates);
   const today = dates[dates.length - 1];
 
   // Data confidence gate — structural calls need history.
-  if (dates.length < THRESHOLDS.minHistoryDays) {
+  if (dates.length < T.minHistoryDays) {
     signals.push({
       severity: "warning",
       action: "DATA",
-      title: `Calibrating — ${dates.length}/${THRESHOLDS.minHistoryDays} working days of data`,
+      title: `Calibrating — ${dates.length}/${T.minHistoryDays} working days of data`,
       detail:
         "Structural signals (hire / automate) unlock at 10 working days. Daily and individual reads below are already live.",
     });
   }
 
   // HIRE — sustained team-wide overload.
-  if (dates.length >= THRESHOLDS.minHistoryDays) {
+  if (dates.length >= T.minHistoryDays) {
     const last10 = lastN(daily, 10);
-    const lowDays = last10.filter((d) => d.avg < THRESHOLDS.structuralLine).length;
-    if (lowDays >= THRESHOLDS.structuralDays) {
+    const lowDays = last10.filter((d) => d.avg < T.structuralLine).length;
+    if (lowDays >= T.structuralDays) {
       signals.push({
         severity: "critical",
         action: "HIRE",
-        title: `Structural overload: team below ${THRESHOLDS.structuralLine}/10 on ${lowDays} of the last 10 working days`,
+        title: `Structural overload: team below ${T.structuralLine}/10 on ${lowDays} of the last 10 working days`,
         detail:
           "Sustained team-wide strain that individual fixes won't solve. If the reason themes below aren't automatable, this is the hire signal.",
       });
@@ -196,9 +205,9 @@ export function computeSignals(
     if (
       m5 != null &&
       caps.length >= 3 &&
-      m5 <= THRESHOLDS.strainAvg &&
+      m5 <= T.strainAvg &&
       team7 != null &&
-      team7 - m5 >= THRESHOLDS.strainGap
+      team7 - m5 >= T.strainGap
     ) {
       signals.push({
         severity: "serious",
@@ -215,7 +224,7 @@ export function computeSignals(
   for (const m of members) {
     for (const d of lastN(dates, 14)) {
       const day = m.days.get(d);
-      if (day && day.capacity <= THRESHOLDS.structuralLine && day.reason) {
+      if (day && day.capacity <= T.structuralLine && day.reason) {
         lowReasons.push(day.reason);
       }
     }
@@ -228,9 +237,9 @@ export function computeSignals(
   if (
     topTheme &&
     topTheme[0] !== "Other" &&
-    topTheme[1] >= THRESHOLDS.themeMinCount &&
+    topTheme[1] >= T.themeMinCount &&
     lowReasons.length > 0 &&
-    topTheme[1] / lowReasons.length >= THRESHOLDS.themeShare
+    topTheme[1] / lowReasons.length >= T.themeShare
   ) {
     signals.push({
       severity: "warning",
@@ -244,7 +253,7 @@ export function computeSignals(
   // WATCH — multiple people in the strain zone today.
   if (today) {
     const strainedToday = members.filter(
-      (m) => (m.days.get(today)?.capacity ?? 99) <= THRESHOLDS.strainZone
+      (m) => (m.days.get(today)?.capacity ?? 99) <= T.strainZone
     );
     if (strainedToday.length >= 2) {
       signals.push({
@@ -264,11 +273,11 @@ export function computeSignals(
       ? last7.reduce((s, d) => s + d.responded + d.out, 0) /
         (last7.length * activeMemberCount)
       : null;
-  if (rr != null && rr < THRESHOLDS.responseFloor) {
+  if (rr != null && rr < T.responseFloor) {
     signals.push({
       severity: "serious",
       action: "DATA",
-      title: `Response rate ${(rr * 100).toFixed(0)}% over the last week — below the ${THRESHOLDS.responseFloor * 100}% floor`,
+      title: `Response rate ${(rr * 100).toFixed(0)}% over the last week — below the ${T.responseFloor * 100}% floor`,
       detail:
         "Below this, the averages stop being trustworthy. Chase the check-in habit before acting on the numbers.",
     });

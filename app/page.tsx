@@ -3,6 +3,7 @@ import { localDateString } from "@/lib/dates";
 import { isDashboardAuthed } from "@/lib/dashboardAuth";
 import { DASHBOARD_CSS } from "@/lib/theme";
 import { LoginGate } from "@/components/LoginGate";
+import { getThresholds } from "@/lib/settings";
 import {
   buildSeries,
   computeSignals,
@@ -11,7 +12,6 @@ import {
   Signal,
   teamAverageByDate,
   themesFor,
-  THRESHOLDS,
 } from "@/lib/analytics";
 
 export const dynamic = "force-dynamic";
@@ -75,10 +75,11 @@ export default async function Home({
     );
   }
 
+  const { thresholds: T } = await getThresholds();
   const activeMembers = data.members.filter((m) => m.is_active);
   const { members, dates } = buildSeries(data.rows);
   const daily = teamAverageByDate(members, dates);
-  const signals = computeSignals(members, dates, activeMembers.length);
+  const signals = computeSignals(members, dates, activeMembers.length, T);
 
   const today = localDateString();
   const todayRow = daily.find((d) => d.date === today);
@@ -91,7 +92,7 @@ export default async function Home({
         (last7.length * activeMembers.length)
       : null;
   const strainedToday = members.filter(
-    (m) => (m.days.get(today)?.capacity ?? 99) <= THRESHOLDS.strainZone
+    (m) => (m.days.get(today)?.capacity ?? 99) <= T.strainZone
   ).length;
 
   const clientsByMemberName = new Map<string, ClientRow[]>();
@@ -108,7 +109,7 @@ export default async function Home({
   for (const m of members) {
     for (const d of dates.slice(-14)) {
       const day = m.days.get(d);
-      if (day && day.capacity <= THRESHOLDS.structuralLine && day.reason) {
+      if (day && day.capacity <= T.structuralLine && day.reason) {
         for (const t of themesFor(day.reason)) {
           themeCounts.set(t, (themeCounts.get(t) ?? 0) + 1);
         }
@@ -156,7 +157,7 @@ export default async function Home({
           label="Response rate (7d)"
           value={responseRate != null ? `${Math.round(responseRate * 100)}%` : "—"}
         />
-        <Tile label="Strain zone today (≤3)" value={String(strainedToday)} alert={strainedToday > 0} />
+        <Tile label={`Strain zone today (≤${T.strainZone})`} value={String(strainedToday)} alert={strainedToday > 0} />
       </section>
 
       <section className="card">
@@ -179,14 +180,14 @@ export default async function Home({
       <div className="two">
         <section className="card">
           <h2>Team trend</h2>
-          <p className="cardsub">Daily team average. The hairline at {THRESHOLDS.structuralLine} is the structural line — sustained time below it is the hire conversation.</p>
-          <TrendLine daily={daily} />
+          <p className="cardsub">Daily team average. The hairline at {T.structuralLine} is the structural line — sustained time below it is the hire conversation.</p>
+          <TrendLine daily={daily} structuralLine={T.structuralLine} />
         </section>
 
         <section className="card">
           <h2>What&rsquo;s eating capacity</h2>
           <p className="cardsub">
-            Themes in the &ldquo;why&rdquo; on low days (≤{THRESHOLDS.structuralLine}/10, last 14 days). A dominant theme is an
+            Themes in the &ldquo;why&rdquo; on low days (≤{T.structuralLine}/10, last 14 days). A dominant theme is an
             automate/redesign signal — not a hiring one.
           </p>
           {themes.length === 0 ? (
@@ -239,10 +240,10 @@ export default async function Home({
       <footer>
         <h3>How the signals are computed</h3>
         <ul>
-          <li><b>Hire</b> — team average below {THRESHOLDS.structuralLine}/10 on {THRESHOLDS.structuralDays}+ of the last 10 working days (needs {THRESHOLDS.minHistoryDays} days of history).</li>
-          <li><b>Rebalance</b> — a member averaging ≤{THRESHOLDS.strainAvg} over recent check-ins while the team sits ≥{THRESHOLDS.strainGap} points higher.</li>
-          <li><b>Automate / redesign</b> — one theme behind ≥{THRESHOLDS.themeShare * 100}% of low-capacity reports (min {THRESHOLDS.themeMinCount}).</li>
-          <li><b>Data health</b> — response rate under {THRESHOLDS.responseFloor * 100}% means don&rsquo;t trust the averages yet.</li>
+          <li><b>Hire</b> — team average below {T.structuralLine}/10 on {T.structuralDays}+ of the last 10 working days (needs {T.minHistoryDays} days of history).</li>
+          <li><b>Rebalance</b> — a member averaging ≤{T.strainAvg} over recent check-ins while the team sits ≥{T.strainGap} points higher.</li>
+          <li><b>Automate / redesign</b> — one theme behind ≥{T.themeShare * 100}% of low-capacity reports (min {T.themeMinCount}).</li>
+          <li><b>Data health</b> — response rate under {T.responseFloor * 100}% means don&rsquo;t trust the averages yet.</li>
         </ul>
         <p>Thresholds are starting points — tune them as the data accumulates.</p>
       </footer>
@@ -369,7 +370,13 @@ function HeatRow({ member, dates }: { member: MemberSeries; dates: string[] }) {
   );
 }
 
-function TrendLine({ daily }: { daily: { date: string; avg: number }[] }) {
+function TrendLine({
+  daily,
+  structuralLine,
+}: {
+  daily: { date: string; avg: number }[];
+  structuralLine: number;
+}) {
   if (daily.length === 0) return <p className="empty">No data yet.</p>;
   const W = 640, H = 180, PAD_L = 26, PAD_R = 44, PAD_T = 12, PAD_B = 24;
   const n = daily.length;
@@ -388,7 +395,7 @@ function TrendLine({ daily }: { daily: { date: string; avg: number }[] }) {
       ))}
       <line
         x1={PAD_L} x2={W - PAD_R}
-        y1={y(THRESHOLDS.structuralLine)} y2={y(THRESHOLDS.structuralLine)}
+        y1={y(structuralLine)} y2={y(structuralLine)}
         className="threshold"
       />
       {n > 1 && <polyline points={pts} className="line" />}

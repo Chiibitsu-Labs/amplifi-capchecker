@@ -1,14 +1,16 @@
 import { isDashboardAuthed } from "@/lib/dashboardAuth";
 import { LoginGate } from "@/components/LoginGate";
 import { DASHBOARD_CSS } from "@/lib/theme";
-import { THRESHOLDS, THRESHOLD_DOCS } from "@/lib/analytics";
+import { THRESHOLD_DOCS } from "@/lib/analytics";
+import { getThresholds } from "@/lib/settings";
+import { updateThresholds } from "@/app/actions";
 
 export const dynamic = "force-dynamic";
 
 export default async function About({
   searchParams,
 }: {
-  searchParams: { key?: string; error?: string };
+  searchParams: { key?: string; error?: string; saved?: string; terror?: string; field?: string };
 }) {
   if (!isDashboardAuthed(searchParams.key)) {
     return (
@@ -21,6 +23,11 @@ export default async function About({
   }
 
   const backHref = searchParams.key ? `/?key=${encodeURIComponent(searchParams.key)}` : "/";
+  const { thresholds: T, overrides } = await getThresholds();
+
+  const fieldLabel =
+    searchParams.field &&
+    THRESHOLD_DOCS.find((d) => d.key === searchParams.field)?.label;
 
   return (
     <main className="viz-root">
@@ -58,13 +65,13 @@ export default async function About({
           </li>
           <li>
             <b>It&rsquo;s calibrating.</b> Structural signals (the Hire line) unlock at{" "}
-            {THRESHOLDS.minHistoryDays} working days of history. The thresholds below are a first
-            pass — v1 sets baselines, reality sharpens them.
+            {T.minHistoryDays} working days of history. The thresholds below are a first pass —
+            v1 sets baselines, reality sharpens them.
           </li>
           <li>
             <b>It&rsquo;s only as good as the response rate.</b> Below{" "}
-            {Math.round(THRESHOLDS.responseFloor * 100)}%, a Data Health warning fires and the
-            averages shouldn&rsquo;t be trusted.
+            {Math.round(T.responseFloor * 100)}%, a Data Health warning fires and the averages
+            shouldn&rsquo;t be trusted.
           </li>
           <li>
             <b>Ground rule:</b> these ratings are for resourcing decisions, never individual
@@ -83,65 +90,99 @@ export default async function About({
         <h2>How the signals are computed</h2>
         <ul className="doclist">
           <li>
-            <b>Hire</b> — team average below {THRESHOLDS.structuralLine}/10 on{" "}
-            {THRESHOLDS.structuralDays}+ of the last 10 working days (needs{" "}
-            {THRESHOLDS.minHistoryDays} days of history).
+            <b>Hire</b> — team average below {T.structuralLine}/10 on {T.structuralDays}+ of the
+            last 10 working days (needs {T.minHistoryDays} days of history).
           </li>
           <li>
-            <b>Rebalance</b> — a member averaging ≤{THRESHOLDS.strainAvg} over recent check-ins
-            while the team sits ≥{THRESHOLDS.strainGap} points higher.
+            <b>Rebalance</b> — a member averaging ≤{T.strainAvg} over recent check-ins while the
+            team sits ≥{T.strainGap} points higher.
           </li>
           <li>
-            <b>Automate / redesign</b> — one theme behind ≥{THRESHOLDS.themeShare * 100}% of
-            low-capacity reports (min {THRESHOLDS.themeMinCount}).
+            <b>Automate / redesign</b> — one theme behind ≥{Math.round(T.themeShare * 100)}% of
+            low-capacity reports (min {T.themeMinCount}).
           </li>
           <li>
-            <b>Watch</b> — 2+ people in the strain zone (≤{THRESHOLDS.strainZone}/10) on the same
-            day.
+            <b>Watch</b> — 2+ people in the strain zone (≤{T.strainZone}/10) on the same day.
           </li>
           <li>
-            <b>Data health</b> — response rate under {Math.round(THRESHOLDS.responseFloor * 100)}%
-            means don&rsquo;t trust the averages yet.
+            <b>Data health</b> — response rate under {Math.round(T.responseFloor * 100)}% means
+            don&rsquo;t trust the averages yet.
           </li>
         </ul>
       </section>
 
-      <section className="card">
-        <h2>How to change a threshold</h2>
+      <section className="card" id="thresholds">
+        <h2>Change the thresholds</h2>
         <p className="cardsub">
-          Every number above is a Vercel environment variable, not hard-coded — change it without
-          touching code: <b>Vercel → this project → Settings → Environment Variables</b> → set the
-          variable → <b>redeploy</b>. The new value takes effect immediately for everyone.
+          Edit any value and save — changes apply immediately, for everyone, no redeploy. Leave a
+          field <b>blank to reset it to its default</b>. Because this changes how the signals are
+          computed, saving asks for the dashboard password again, even though you&rsquo;re already
+          logged in.
         </p>
-        <div className="tablewrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Signal input</th>
-                <th>Env var</th>
-                <th>Current</th>
-                <th>Default</th>
-              </tr>
-            </thead>
-            <tbody>
-              {THRESHOLD_DOCS.map((t) => (
-                <tr key={t.envVar}>
-                  <td>{t.label}</td>
-                  <td className="mono">{t.envVar}</td>
-                  <td className="num">
-                    {THRESHOLDS[t.key]}
-                    {t.unit ? ` (${t.unit})` : ""}
-                  </td>
-                  <td className="num">{t.default}</td>
+
+        {searchParams.saved === "1" && (
+          <p className="banner ok">✓ Thresholds saved — the dashboard is already using them.</p>
+        )}
+        {searchParams.terror === "badpass" && (
+          <p className="banner bad">Incorrect password — nothing was changed.</p>
+        )}
+        {searchParams.terror === "range" && (
+          <p className="banner bad">
+            {fieldLabel ? `"${fieldLabel}" is out of its allowed range` : "A value is out of range"} — nothing was changed.
+          </p>
+        )}
+        {searchParams.terror === "save" && (
+          <p className="banner bad">Couldn&rsquo;t save — database error. Try again.</p>
+        )}
+
+        <form action={updateThresholds} className="setform">
+          <div className="tablewrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Signal input</th>
+                  <th>Value</th>
+                  <th>Default</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <p className="cardsub" style={{ marginTop: 12 }}>
-          Don&rsquo;t have Vercel access, or want an in-app control instead of env vars? Ask
-          Chii — it&rsquo;s a small follow-up to wire a settings panel here.
-        </p>
+              </thead>
+              <tbody>
+                {THRESHOLD_DOCS.map((t) => (
+                  <tr key={t.key}>
+                    <td>
+                      {t.label}
+                      {t.unit ? <span className="unithint"> ({t.unit})</span> : null}
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        name={t.key}
+                        defaultValue={overrides[t.key] ?? ""}
+                        placeholder={String(T[t.key])}
+                        min={t.min}
+                        max={t.max}
+                        step={t.step}
+                        className="setfield"
+                        inputMode="decimal"
+                      />
+                    </td>
+                    <td className="num">{t.default}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="setconfirm">
+            <input
+              type="password"
+              name="confirmPassword"
+              placeholder="Dashboard password (to confirm)"
+              autoComplete="current-password"
+              required
+              className="loginfield"
+            />
+            <button type="submit" className="loginbtn">Save thresholds</button>
+          </div>
+        </form>
       </section>
 
       <section className="card">

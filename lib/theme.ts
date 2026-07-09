@@ -171,4 +171,19 @@ footer li { margin-bottom: 3px; line-height: 1.45; }
 }
 .loginbtn:hover { filter: brightness(1.08); }
 .loginerror { color: var(--critical); font-size: 13px; margin: 14px 0 0; }
+
+.banner { border-radius: 8px; padding: 10px 14px; font-size: 13.5px; margin: 0 0 14px; }
+.banner.ok { background: rgba(47,174,78,0.12); border: 1px solid var(--good); color: var(--good-text); }
+.banner.bad { background: rgba(194,73,15,0.12); border: 1px solid var(--critical); color: #f0a06a; }
+
+.setfield {
+  background: var(--surface-2); border: 1px solid var(--grid); border-radius: 6px;
+  padding: 7px 10px; font-size: 14px; color: var(--ink); outline: none;
+  font-family: inherit; width: 92px; font-variant-numeric: tabular-nums;
+}
+.setfield:focus { border-color: var(--gold); }
+.unithint { color: var(--muted); font-size: 12px; }
+.setconfirm { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; align-items: center; }
+.setconfirm .loginfield { flex: 1 1 220px; max-width: 320px; }
+.setconfirm .loginbtn { flex: 0 0 auto; padding: 11px 22px; }
 `;

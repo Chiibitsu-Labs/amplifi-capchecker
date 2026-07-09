@@ -62,6 +62,15 @@ create table if not exists capchecker_clients (
 create index if not exists capchecker_clients_current_idx
   on capchecker_clients (member_id, is_current);
 
+-- ── Settings ────────────────────────────────────────────────────────────
+-- In-app threshold overrides (set from the /about page, password-confirmed).
+-- Resolution order in the app: this table → THRESHOLD_* env var → default.
+create table if not exists capchecker_settings (
+  key        text primary key,
+  value      text not null,
+  updated_at timestamptz not null default now()
+);
+
 -- ── Summary audit ───────────────────────────────────────────────────────
 -- What we sent Michele each day (handy for debugging + backfilling a dashboard).
 create table if not exists capchecker_summaries (
@@ -99,6 +108,7 @@ alter table capchecker_members    enable row level security;
 alter table capchecker_checkins   enable row level security;
 alter table capchecker_clients    enable row level security;
 alter table capchecker_summaries  enable row level security;
+alter table capchecker_settings   enable row level security;
 
 -- ── Dashboard convenience view ──────────────────────────────────────────
 -- Flattened daily rows with member name — point a chart / BI tool at this.
