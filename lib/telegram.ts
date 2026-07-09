@@ -106,5 +106,11 @@ export function capacityKeyboard(): ReplyMarkup {
       const n = start + i;
       return { text: String(n), callback_data: `cap:${n}` };
     });
-  return { inline_keyboard: [row(1), row(6)] };
+  return {
+    inline_keyboard: [
+      row(1),
+      row(6),
+      [{ text: "🤒 Out today (sick / leave)", callback_data: "cap:out" }],
+    ],
+  };
 }

@@ -13,6 +13,12 @@ export function supabase(): SupabaseClient {
   if (!client) {
     client = createClient(config.supabase.url, config.supabase.serviceRoleKey, {
       auth: { persistSession: false, autoRefreshToken: false },
+      global: {
+        // Next.js persists fetch() responses in its Data Cache even on
+        // force-dynamic routes, which would serve stale check-in data on the
+        // dashboard. Capacity data must always be live.
+        fetch: (url, init) => fetch(url, { ...init, cache: "no-store" }),
+      },
     });
   }
   return client;

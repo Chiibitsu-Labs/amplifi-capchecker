@@ -31,10 +31,15 @@ create table if not exists capchecker_checkins (
   capacity     smallint check (capacity between 1 and 10),
   reason       text,
   client_count smallint,
+  -- 'ok' = normal check-in, 'out' = sick/leave/off that day
+  status       text not null default 'ok',
   created_at   timestamptz not null default now(),
   updated_at   timestamptz not null default now(),
   unique (member_id, check_date)
 );
+
+-- Upgrade path for databases created before the status column existed.
+alter table capchecker_checkins add column if not exists status text not null default 'ok';
 
 create index if not exists capchecker_checkins_date_idx
   on capchecker_checkins (check_date);
@@ -97,7 +102,8 @@ alter table capchecker_summaries  enable row level security;
 
 -- ── Dashboard convenience view ──────────────────────────────────────────
 -- Flattened daily rows with member name — point a chart / BI tool at this.
-create or replace view capchecker_daily_view as
+drop view if exists capchecker_daily_view;
+create view capchecker_daily_view as
 select
   c.check_date,
   m.name           as member_name,
@@ -105,6 +111,7 @@ select
   c.capacity,
   c.reason,
   c.client_count,
+  c.status,
   c.created_at
 from capchecker_checkins c
 join capchecker_members m on m.id = c.member_id;

@@ -22,6 +22,7 @@ export type Checkin = {
   capacity: number | null;
   reason: string | null;
   client_count: number | null;
+  status: "ok" | "out";
 };
 
 const MEMBER_COLUMNS =
@@ -119,7 +120,21 @@ export async function upsertCheckinCapacity(
   const { error } = await supabase()
     .from("capchecker_checkins")
     .upsert(
-      { member_id: memberId, check_date: checkDate, capacity },
+      { member_id: memberId, check_date: checkDate, capacity, status: "ok" },
+      { onConflict: "member_id,check_date" }
+    );
+  if (error) throw error;
+}
+
+/** Mark the member out (sick/leave) for the day — an excused absence, not a gap. */
+export async function markCheckinOut(
+  memberId: string,
+  checkDate: string
+): Promise<void> {
+  const { error } = await supabase()
+    .from("capchecker_checkins")
+    .upsert(
+      { member_id: memberId, check_date: checkDate, status: "out", capacity: null },
       { onConflict: "member_id,check_date" }
     );
   if (error) throw error;
@@ -159,7 +174,7 @@ export async function getCheckinsForDate(
 ): Promise<Checkin[]> {
   const { data, error } = await supabase()
     .from("capchecker_checkins")
-    .select("id, member_id, check_date, capacity, reason, client_count")
+    .select("id, member_id, check_date, capacity, reason, client_count, status")
     .eq("check_date", checkDate);
   if (error) throw error;
   return (data as Checkin[]) ?? [];
