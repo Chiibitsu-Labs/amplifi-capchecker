@@ -32,17 +32,45 @@ export type Signal = {
 };
 
 // ── Thresholds (the "data you can stand behind" — documented on the page) ──
+// Every value is overridable via a Vercel env var, no code change/redeploy-
+// from-a-PR required — see THRESHOLD_DOCS below, surfaced on /about.
+function envNumber(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : fallback;
+}
+
 export const THRESHOLDS = {
-  strainZone: 3, // capacity ≤ 3 = strained
-  structuralLine: 5, // team avg below this = overloaded day
-  structuralDays: 7, // ...on ≥7 of last 10 working days = hire signal
-  minHistoryDays: 10, // days of data before structural calls are trusted
-  strainAvg: 3.5, // member 5-day avg ≤ this = individual strain
-  strainGap: 2, // ...while team is ≥ this much higher = rebalance
-  themeShare: 0.4, // one theme ≥40% of low-capacity reasons = automate
-  themeMinCount: 3,
-  responseFloor: 0.7, // 7-day response rate below this = data warning
-} as const;
+  strainZone: envNumber("THRESHOLD_STRAIN_ZONE", 3), // capacity ≤ this = strained
+  structuralLine: envNumber("THRESHOLD_STRUCTURAL_LINE", 5), // team avg below this = overloaded day
+  structuralDays: envNumber("THRESHOLD_STRUCTURAL_DAYS", 7), // ...on ≥N of last 10 working days = hire signal
+  minHistoryDays: envNumber("THRESHOLD_MIN_HISTORY_DAYS", 10), // days of data before structural calls are trusted
+  strainAvg: envNumber("THRESHOLD_STRAIN_AVG", 3.5), // member 5-day avg ≤ this = individual strain
+  strainGap: envNumber("THRESHOLD_STRAIN_GAP", 2), // ...while team is ≥ this much higher = rebalance
+  themeShare: envNumber("THRESHOLD_THEME_SHARE", 0.4), // one theme ≥40% of low-capacity reasons = automate
+  themeMinCount: envNumber("THRESHOLD_THEME_MIN_COUNT", 3),
+  responseFloor: envNumber("THRESHOLD_RESPONSE_FLOOR", 0.7), // 7-day response rate below this = data warning
+};
+
+/** Human-readable docs for the /about page — one row per tunable threshold. */
+export const THRESHOLD_DOCS: {
+  key: keyof typeof THRESHOLDS;
+  envVar: string;
+  label: string;
+  default: number;
+  unit?: string;
+}[] = [
+  { key: "structuralLine", envVar: "THRESHOLD_STRUCTURAL_LINE", label: "Team average below this = an overloaded day", default: 5 },
+  { key: "structuralDays", envVar: "THRESHOLD_STRUCTURAL_DAYS", label: "...on this many of the last 10 working days triggers Hire", default: 7 },
+  { key: "minHistoryDays", envVar: "THRESHOLD_MIN_HISTORY_DAYS", label: "Working days of history required before structural signals unlock", default: 10 },
+  { key: "strainAvg", envVar: "THRESHOLD_STRAIN_AVG", label: "Individual 5-day average at/below this = personal strain", default: 3.5 },
+  { key: "strainGap", envVar: "THRESHOLD_STRAIN_GAP", label: "...while the team sits at least this many points higher, triggers Rebalance", default: 2 },
+  { key: "themeShare", envVar: "THRESHOLD_THEME_SHARE", label: "Share of low-capacity reports one theme must dominate to trigger Automate", default: 0.4, unit: "fraction, 0.4 = 40%" },
+  { key: "themeMinCount", envVar: "THRESHOLD_THEME_MIN_COUNT", label: "Minimum occurrences of a theme before it can trigger Automate", default: 3 },
+  { key: "responseFloor", envVar: "THRESHOLD_RESPONSE_FLOOR", label: "7-day response rate floor before a Data Health warning fires", default: 0.7, unit: "fraction, 0.7 = 70%" },
+  { key: "strainZone", envVar: "THRESHOLD_STRAIN_ZONE", label: "Capacity at/below this = the strain zone (heatmap color, Watch signal, KPI tile)", default: 3 },
+];
 
 // ── Reason themes (keyword v1; an LLM pass can replace this later) ─────────
 const THEME_KEYWORDS: [string, RegExp][] = [
