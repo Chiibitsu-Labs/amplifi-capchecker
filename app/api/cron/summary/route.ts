@@ -67,7 +67,19 @@ export async function GET(req: NextRequest) {
 
   const message = buildSummary({ date, rows, responded, missing, avg });
 
-  await sendMessage(config.telegram.micheleChatId, message);
+  // Michele gets the summary; admins (ADMIN_CHAT_IDS) are CC'd so ops can
+  // see exactly what she sees. Set is deduped, so Michele never gets two.
+  const recipients = new Set([
+    config.telegram.micheleChatId,
+    ...config.telegram.adminChatIds,
+  ]);
+  for (const chatId of recipients) {
+    try {
+      await sendMessage(chatId, message);
+    } catch (err) {
+      console.error(`summary send failed for ${chatId}`, err);
+    }
+  }
   await recordSummary(date, { rows, avg, responded: responded.length, total: members.length });
 
   return NextResponse.json({
