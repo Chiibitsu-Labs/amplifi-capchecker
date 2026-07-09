@@ -531,8 +531,8 @@ const CSS = `
 @media (min-width: 720px) { .viz-root { padding: 36px 24px 64px; } }
 
 .brandrow { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-.logo { height: 34px; width: auto; display: block; aspect-ratio: 517.47 / 142.65; }
-@media (min-width: 720px) { .logo { height: 46px; } }
+.logo { height: 48px; width: auto; display: block; aspect-ratio: 517.47 / 142.65; }
+@media (min-width: 720px) { .logo { height: 64px; } }
 .producttag {
   font-size: 14px; font-weight: 600; color: var(--ink2);
   padding-left: 14px; border-left: 1px solid var(--grid);
