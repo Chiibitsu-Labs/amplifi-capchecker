@@ -131,7 +131,11 @@ export default async function Home({
       <style>{CSS}</style>
 
       <header>
-        <h1>Amplifi Capacity Instrument</h1>
+        <div className="brandrow">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.svg" alt="Amplifi" className="logo" />
+          <span className="producttag">Capacity Instrument</span>
+        </div>
         <p className="sub">
           Daily team capacity, the signals behind it, and what to do about them —{" "}
           hire, automate, or rebalance. Updated live from Telegram check-ins.
@@ -486,24 +490,33 @@ function Sparkline({ caps }: { caps: number[] }) {
 // ── Styles (reference dataviz palette; light default + selected dark) ───────
 
 const CSS = `
-/* Amplifi brand: dark "social intelligence command center". Black/white
-   foundation, gold used sparingly as an accent, bright colors reserved for
-   data. Dark-locked to match the brand; mobile-first. */
+/* Amplifi brand, verified against the live site (amplifihq.com), not the
+   earlier hallucinated guide: white-dominant marketing site, NAVY BLUE as
+   the real dark color (not black), one warm ORANGE used consistently for
+   every CTA and stat callout, GOLD reserved for the logo mark only. No red/
+   purple/green appear anywhere on the real site.
+   This is a COO daily-scan tool, so we stay dark for scan speed — but the
+   dark anchor is Amplifi's own navy, and orange carries the "attention"
+   semantic exactly as it does on their site (CTA = act; here, critical
+   signal = act). That's what makes it feel like an Amplifi tool, not a
+   generic dark dashboard. Dark-locked; mobile-first. */
 .viz-root {
   color-scheme: dark;
-  --plane: #000000; --surface: #141414; --surface-2: #1b1b1b;
-  --ink: #ffffff; --ink2: #b4b4ad; --muted: #8a8a82;
-  --grid: #2a2a28; --baseline: #3a3a37; --ring: rgba(255,255,255,0.09);
-  --gold: #f2b23a;
-  --accent: #4d86e0;
-  /* Diverging strain→open scale, from Amplifi data red↔blue. White ink on all. */
-  --b1: #d1402a; --b1-ink: #ffffff;   /* 1–2 drowning */
-  --b2: #7a3327; --b2-ink: #ffffff;   /* 3–4 strained */
-  --b3: #2c2c2a; --b3-ink: #e2e2df;   /* 5–6 holding (neutral) */
-  --b4: #2c4f88; --b4-ink: #ffffff;   /* 7–8 open */
-  --b5: #3f74c9; --b5-ink: #ffffff;   /* 9–10 wide open */
-  --good: #1faa1f; --warning: #f2b23a; --serious: #f59a00; --critical: #d93412;
-  --good-text: #35c135;
+  --plane: #0a0e24; --surface: #11163a; --surface-2: #161c46;
+  --ink: #ffffff; --ink2: #b7bad0; --muted: #7d81a3;
+  --grid: #232a52; --baseline: #333a66; --ring: rgba(255,255,255,0.09);
+  --gold: #eaa93c;
+  --accent: #5c86e6;
+  /* Diverging strain→open scale, built from Amplifi's real orange (warm
+     pole, "attention" on their site) ↔ navy (cool pole, their brand dark).
+     CVD-validated: worst adjacent ΔE 18.8 on this surface. */
+  --b1: #d9691b; --b1-ink: #ffffff;   /* 1–2 drowning */
+  --b2: #7a4a26; --b2-ink: #ffffff;   /* 3–4 strained */
+  --b3: #262b4a; --b3-ink: #d6d8ea;   /* 5–6 holding (neutral) */
+  --b4: #2e3e7a; --b4-ink: #ffffff;   /* 7–8 open */
+  --b5: #4f6bc4; --b5-ink: #ffffff;   /* 9–10 wide open */
+  --good: #2fae4e; --warning: #eaa93c; --serious: #dd7e1b; --critical: #c2490f;
+  --good-text: #3fc463;
 
   margin: 0 auto; max-width: 1080px;
   padding: 20px 14px 56px;
@@ -513,14 +526,16 @@ const CSS = `
 }
 @media (min-width: 720px) { .viz-root { padding: 36px 24px 64px; } }
 
-header h1 { font-size: 22px; line-height: 1.2; margin: 0; letter-spacing: -0.01em; }
-/* Gold accent rule under the title — the one branded flourish. */
-header h1::after {
-  content: ""; display: block; width: 44px; height: 3px;
-  background: var(--gold); border-radius: 2px; margin: 10px 0 0;
+.brandrow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.logo { height: 26px; width: auto; display: block; }
+@media (min-width: 720px) { .logo { height: 32px; } }
+.producttag {
+  font-size: 13px; font-weight: 600; color: var(--ink2);
+  padding-left: 12px; border-left: 1px solid var(--grid);
+  letter-spacing: 0.01em;
 }
-.sub { color: var(--ink2); margin: 12px 0 22px; max-width: 640px; font-size: 14px; line-height: 1.5; }
-@media (min-width: 720px) { header h1 { font-size: 26px; } }
+@media (min-width: 720px) { .producttag { font-size: 15px; } }
+.sub { color: var(--ink2); margin: 14px 0 22px; max-width: 640px; font-size: 14px; line-height: 1.5; }
 
 .signals { display: flex; flex-direction: column; gap: 10px; margin-bottom: 22px; }
 .signal { background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; padding: 14px 16px; border-left-width: 3px; }

@@ -16,14 +16,14 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#000000",
+  themeColor: "#0a0e24",
   colorScheme: "dark",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className={inter.variable}>
-      <body style={{ margin: 0, background: "#000000" }}>{children}</body>
+      <body style={{ margin: 0, background: "#0a0e24" }}>{children}</body>
     </html>
   );
 }
