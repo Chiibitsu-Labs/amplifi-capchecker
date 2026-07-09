@@ -11,6 +11,7 @@ import {
   getAllMembers,
   getCurrentClientCount,
   getMemberByTelegramId,
+  markCheckinOut,
   Member,
   replaceCurrentClients,
   setCheckinClientCount,
@@ -60,6 +61,22 @@ async function handleCallback(cb: NonNullable<TelegramUpdate["callback_query"]>)
   const toggleMatch = data.match(/^toggle:([0-9a-f-]{36})$/);
   if (toggleMatch) {
     await handleAdminToggle(cb, toggleMatch[1]);
+    return;
+  }
+
+  if (data === "cap:out") {
+    const member = await ensureMember(cb.from);
+    const date = localDateString();
+    await markCheckinOut(member.id, date);
+    await setMemberState(member.id, "idle");
+    await answerCallbackQuery(cb.id, "Marked out for today");
+    if (cb.message) {
+      await editMessageText(
+        cb.message.chat.id,
+        cb.message.message_id,
+        `Out today 🤒 — rest up, no check-in needed.`
+      );
+    }
     return;
   }
 

@@ -29,7 +29,7 @@ async function getData(): Promise<{
     const [checkins, members, clients] = await Promise.all([
       sb
         .from("capchecker_daily_view")
-        .select("check_date, member_name, capacity, reason, client_count")
+        .select("check_date, member_name, capacity, reason, client_count, status")
         .order("check_date", { ascending: true })
         .limit(2000),
       sb.from("capchecker_members").select("id, name, is_active"),
@@ -93,7 +93,8 @@ export default async function Home({
   const avg7 = last7.length ? last7.reduce((s, d) => s + d.avg, 0) / last7.length : null;
   const responseRate =
     last7.length && activeMembers.length
-      ? last7.reduce((s, d) => s + d.responded, 0) / (last7.length * activeMembers.length)
+      ? last7.reduce((s, d) => s + d.responded + d.out, 0) /
+        (last7.length * activeMembers.length)
       : null;
   const redToday = members.filter(
     (m) => (m.days.get(today)?.capacity ?? 99) <= THRESHOLDS.redZone
@@ -171,6 +172,7 @@ export default async function Home({
           <span><i className="sw b3" />5–6 holding</span>
           <span><i className="sw b4" />7–8 open</span>
           <span><i className="sw b5" />9–10 wide open</span>
+          <span>🤒 out (sick/leave)</span>
         </div>
       </section>
 
@@ -340,6 +342,13 @@ function HeatRow({ member, dates }: { member: MemberSeries; dates: string[] }) {
     <>
       <div className="heatname">{member.name.split(" ")[0]}</div>
       {dates.map((d) => {
+        if (member.outDays.has(d)) {
+          return (
+            <div key={d} className="cell outday" title={`${member.name} · ${d}: out (sick/leave)`}>
+              🤒
+            </div>
+          );
+        }
         const day = member.days.get(d);
         if (!day) return <div key={d} className="cell miss" title={`${member.name} · ${d}: no check-in`} />;
         return (
@@ -434,7 +443,11 @@ function MemberCard({
       <div className="memtop">
         <span className="memname">{member.name}</span>
         <span className={`memchip ${todayCap != null ? binClass(todayCap) : "miss"}`}>
-          {todayCap != null ? `${todayCap}/10` : "no check-in"}
+          {todayCap != null
+            ? `${todayCap}/10`
+            : member.outDays.has(today)
+              ? "out today 🤒"
+              : "no check-in"}
         </span>
       </div>
       <Sparkline caps={caps} />
@@ -541,6 +554,7 @@ header h1 { font-size: 24px; margin: 0 0 4px; }
 .heatname { font-size: 13px; color: var(--ink2); align-self: center; padding-right: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cell { height: 30px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; cursor: default; }
 .cell.miss { background: transparent; border: 1px solid var(--grid); }
+.cell.outday { background: transparent; border: 1px solid var(--grid); font-size: 13px; }
 .cell.b1 { background: var(--b1); color: var(--b1-ink); }
 .cell.b2 { background: var(--b2); color: var(--b2-ink); }
 .cell.b3 { background: var(--b3); color: var(--b3-ink); }

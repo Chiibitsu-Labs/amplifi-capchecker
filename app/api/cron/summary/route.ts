@@ -53,19 +53,21 @@ export async function GET(req: NextRequest) {
         clientCount: await getCurrentClientCount(m.id),
         capacity: c?.capacity ?? null,
         reason: c?.reason ?? null,
+        out: c?.status === "out",
         responded: !!c && c.capacity !== null,
       };
     })
   );
 
   const responded = rows.filter((r) => r.responded);
-  const missing = rows.filter((r) => !r.responded);
+  const out = rows.filter((r) => r.out);
+  const missing = rows.filter((r) => !r.responded && !r.out);
   const avg =
     responded.length > 0
       ? responded.reduce((s, r) => s + (r.capacity ?? 0), 0) / responded.length
       : null;
 
-  const message = buildSummary({ date, rows, responded, missing, avg });
+  const message = buildSummary({ date, rows, responded, missing, out, avg });
 
   // Michele gets the summary; admins (ADMIN_CHAT_IDS) are CC'd so ops can
   // see exactly what she sees. Set is deduped, so Michele never gets two.
@@ -95,9 +97,10 @@ function buildSummary(args: {
   rows: SummaryRow[];
   responded: SummaryRow[];
   missing: SummaryRow[];
+  out: SummaryRow[];
   avg: number | null;
 }): string {
-  const { date, responded, missing, avg } = args;
+  const { date, responded, missing, out, avg } = args;
 
   if (responded.length === 0) {
     return (
@@ -138,6 +141,13 @@ function buildSummary(args: {
     lines.push(`${flag} <b>${escapeHtml(r.name)}</b> — ${r.capacity}/10${clients}${reason}`);
   }
 
+  if (out.length > 0) {
+    lines.push("");
+    lines.push(
+      `🤒 Out today: ${out.map((m) => escapeHtml(m.name)).join(", ")}`
+    );
+  }
+
   if (missing.length > 0) {
     lines.push("");
     lines.push(
@@ -155,5 +165,6 @@ type SummaryRow = {
   clientCount: number;
   capacity: number | null;
   reason: string | null;
+  out: boolean;
   responded: boolean;
 };

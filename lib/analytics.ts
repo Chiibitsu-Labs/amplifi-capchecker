@@ -10,12 +10,15 @@ export type DayRow = {
   capacity: number | null;
   reason: string | null;
   client_count: number | null;
+  status?: "ok" | "out" | null;
 };
 
 export type MemberSeries = {
   name: string;
   /** check_date → capacity, only days they responded */
   days: Map<string, { capacity: number; reason: string | null }>;
+  /** days marked out (sick/leave) — excused, excluded from averages */
+  outDays: Set<string>;
   latestReason: string | null;
   latestClientCount: number | null;
 };
@@ -64,14 +67,25 @@ export function buildSeries(rows: DayRow[]): {
 
   // rows arrive ordered by check_date ascending
   for (const r of rows) {
-    if (r.capacity == null) continue;
+    const isOut = r.status === "out";
+    if (r.capacity == null && !isOut) continue;
     dateSet.add(r.check_date);
     let m = byMember.get(r.member_name);
     if (!m) {
-      m = { name: r.member_name, days: new Map(), latestReason: null, latestClientCount: null };
+      m = {
+        name: r.member_name,
+        days: new Map(),
+        outDays: new Set(),
+        latestReason: null,
+        latestClientCount: null,
+      };
       byMember.set(r.member_name, m);
     }
-    m.days.set(r.check_date, { capacity: r.capacity, reason: r.reason });
+    if (isOut) {
+      m.outDays.add(r.check_date);
+      continue;
+    }
+    m.days.set(r.check_date, { capacity: r.capacity!, reason: r.reason });
     m.latestReason = r.reason ?? m.latestReason;
     m.latestClientCount = r.client_count ?? m.latestClientCount;
   }
@@ -85,15 +99,17 @@ export function buildSeries(rows: DayRow[]): {
 export function teamAverageByDate(
   members: MemberSeries[],
   dates: string[]
-): { date: string; avg: number; responded: number }[] {
+): { date: string; avg: number; responded: number; out: number }[] {
   return dates.map((date) => {
     const caps = members
       .map((m) => m.days.get(date)?.capacity)
       .filter((c): c is number => c != null);
+    const out = members.filter((m) => m.outDays.has(date)).length;
     return {
       date,
       avg: caps.length ? caps.reduce((s, c) => s + c, 0) / caps.length : 0,
       responded: caps.length,
+      out,
     };
   });
 }
@@ -213,10 +229,12 @@ export function computeSignals(
   }
 
   // Instrument health — the data is only as good as the response rate.
+  // "Out" days are excused: they count as engaging with the check-in.
   const last7 = lastN(daily, 7);
   const rr =
     last7.length && activeMemberCount
-      ? last7.reduce((s, d) => s + d.responded, 0) / (last7.length * activeMemberCount)
+      ? last7.reduce((s, d) => s + d.responded + d.out, 0) /
+        (last7.length * activeMemberCount)
       : null;
   if (rr != null && rr < THRESHOLDS.responseFloor) {
     signals.push({
