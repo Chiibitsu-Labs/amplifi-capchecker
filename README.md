@@ -133,7 +133,20 @@ npm run dev
 | `/start` | Enroll / re-activate |
 | `/capacity` | Run today's check-in on demand |
 | `/clients` | Update client roster any time |
+| `/pause` | Stop your own daily check-ins (leave, etc.) — `/start` resumes |
+| `/team` | **Admins only** (Michele + `ADMIN_CHAT_IDS`): roster with tap-to-pause/resume buttons |
 | `/help` | How it works |
+
+## Operational notes
+
+- **Summary is idempotent:** at most one summary per day. Re-running the
+  endpoint returns `skipped: already_sent`. Force a re-send with
+  `&force=1` on the manual trigger URL.
+- **Vercel Hobby cron timing:** Hobby-plan crons fire *within the hour* of
+  their schedule, so the "10am" summary can arrive between 10:00–10:59am
+  (UTC+8). Vercel Pro gives to-the-minute scheduling if that matters.
+- **Dashboard privacy:** set `DASHBOARD_PASSWORD` and share
+  `https://<app>/?key=<password>` with people who should see it.
 
 ## Notes & next steps
 
