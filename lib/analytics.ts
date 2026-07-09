@@ -33,7 +33,7 @@ export type Signal = {
 
 // ── Thresholds (the "data you can stand behind" — documented on the page) ──
 export const THRESHOLDS = {
-  redZone: 3, // capacity ≤ 3 = strained
+  strainZone: 3, // capacity ≤ 3 = strained
   structuralLine: 5, // team avg below this = overloaded day
   structuralDays: 7, // ...on ≥7 of last 10 working days = hire signal
   minHistoryDays: 10, // days of data before structural calls are trusted
@@ -213,16 +213,16 @@ export function computeSignals(
     });
   }
 
-  // WATCH — multiple people in the red zone today.
+  // WATCH — multiple people in the strain zone today.
   if (today) {
-    const redToday = members.filter(
-      (m) => (m.days.get(today)?.capacity ?? 99) <= THRESHOLDS.redZone
+    const strainedToday = members.filter(
+      (m) => (m.days.get(today)?.capacity ?? 99) <= THRESHOLDS.strainZone
     );
-    if (redToday.length >= 2) {
+    if (strainedToday.length >= 2) {
       signals.push({
         severity: "warning",
         action: "WATCH",
-        title: `${redToday.length} people in the red zone today (${redToday.map((m) => m.name.split(" ")[0]).join(", ")})`,
+        title: `${strainedToday.length} people in the strain zone today (${strainedToday.map((m) => m.name.split(" ")[0]).join(", ")})`,
         detail: "Same-day crunch. Check whether it's one deliverable or coincidence.",
       });
     }
