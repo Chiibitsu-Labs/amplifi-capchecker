@@ -135,7 +135,9 @@ function buildSummary(args: {
 
   lines.push("");
   for (const r of sorted) {
-    const flag = (r.capacity ?? 99) <= LOW_CAPACITY_THRESHOLD ? "🔴" : "🟢";
+    // No red anywhere in the brand palette — orange is the strain color
+    // everywhere else (heatmap, signal severities), so it is here too.
+    const flag = (r.capacity ?? 99) <= LOW_CAPACITY_THRESHOLD ? "🟠" : "🟢";
     const clients = r.clientCount > 0 ? ` · ${r.clientCount} client${r.clientCount === 1 ? "" : "s"}` : "";
     const reason = r.reason ? `\n   <i>${escapeHtml(r.reason)}</i>` : "";
     lines.push(`${flag} <b>${escapeHtml(r.name)}</b> — ${r.capacity}/10${clients}${reason}`);

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { config } from "@/lib/config";
+import { safeCompare } from "@/lib/auth";
 import {
   answerCallbackQuery,
   capacityKeyboard,
@@ -31,7 +32,7 @@ export const dynamic = "force-dynamic";
 // so a single bad update never causes Telegram to retry-storm us.
 export async function POST(req: NextRequest) {
   const secret = req.headers.get("x-telegram-bot-api-secret-token");
-  if (secret !== config.telegram.webhookSecret) {
+  if (!secret || !safeCompare(secret, config.telegram.webhookSecret)) {
     return NextResponse.json({ ok: false }, { status: 401 });
   }
 

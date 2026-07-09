@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase";
 import { localDateString } from "@/lib/dates";
 import { config } from "@/lib/config";
+import { safeCompare } from "@/lib/auth";
 import {
   buildSeries,
   computeSignals,
@@ -58,11 +59,12 @@ export default async function Home({
 }: {
   searchParams: { key?: string };
 }) {
-  if (config.dashboardPassword && searchParams.key !== config.dashboardPassword) {
+  const providedKey = searchParams.key ?? "";
+  if (config.dashboardPassword && !safeCompare(providedKey, config.dashboardPassword)) {
     return (
       <main className="viz-root" style={{ maxWidth: 480, margin: "0 auto", padding: "96px 20px" }}>
         <style>{CSS}</style>
-        <h1 style={{ fontSize: 20 }}>🔒 Amplifi Capacity Instrument</h1>
+        <h1 style={{ fontSize: 20 }}>🔒 Capacity Dashboard</h1>
         <p className="sub">
           This dashboard is private. Open it with the access link (…/?key=…) shared by your admin.
         </p>
@@ -75,7 +77,7 @@ export default async function Home({
     return (
       <main className="viz-root" style={{ maxWidth: 640, margin: "0 auto", padding: "64px 20px" }}>
         <style>{CSS}</style>
-        <h1 style={{ fontSize: 20 }}>Amplifi Capacity Instrument</h1>
+        <h1 style={{ fontSize: 20 }}>Capacity Dashboard</h1>
         <p className="sub">Not connected to Supabase yet — check env vars and the migration.</p>
       </main>
     );
@@ -96,8 +98,8 @@ export default async function Home({
       ? last7.reduce((s, d) => s + d.responded + d.out, 0) /
         (last7.length * activeMembers.length)
       : null;
-  const redToday = members.filter(
-    (m) => (m.days.get(today)?.capacity ?? 99) <= THRESHOLDS.redZone
+  const strainedToday = members.filter(
+    (m) => (m.days.get(today)?.capacity ?? 99) <= THRESHOLDS.strainZone
   ).length;
 
   const clientsByMemberName = new Map<string, ClientRow[]>();
@@ -134,7 +136,7 @@ export default async function Home({
         <div className="brandrow">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo.svg" alt="Amplifi" className="logo" />
-          <span className="producttag">Capacity Instrument</span>
+          <span className="producttag">Capacity Dashboard</span>
         </div>
         <p className="sub">
           Daily team capacity, the signals behind it, and what to do about them —{" "}
@@ -160,13 +162,13 @@ export default async function Home({
           label="Response rate (7d)"
           value={responseRate != null ? `${Math.round(responseRate * 100)}%` : "—"}
         />
-        <Tile label="Red zone today (≤3)" value={String(redToday)} alert={redToday > 0} />
+        <Tile label="Strain zone today (≤3)" value={String(strainedToday)} alert={strainedToday > 0} />
       </section>
 
       <section className="card">
-        <h2>Who's strained, when</h2>
+        <h2>Who&rsquo;s strained, when</h2>
         <p className="cardsub">
-          Capacity per person per working day. Red = strained, blue = open; the number is the
+          Capacity per person per working day. Orange = strained, blue = open; the number is the
           rating they gave.
         </p>
         <Heatmap members={members} dates={heatDates} />
@@ -188,9 +190,9 @@ export default async function Home({
         </section>
 
         <section className="card">
-          <h2>What's eating capacity</h2>
+          <h2>What&rsquo;s eating capacity</h2>
           <p className="cardsub">
-            Themes in the "why" on low days (≤{THRESHOLDS.structuralLine}/10, last 14 days). A dominant theme is an
+            Themes in the &ldquo;why&rdquo; on low days (≤{THRESHOLDS.structuralLine}/10, last 14 days). A dominant theme is an
             automate/redesign signal — not a hiring one.
           </p>
           {themes.length === 0 ? (
@@ -246,7 +248,7 @@ export default async function Home({
           <li><b>Hire</b> — team average below {THRESHOLDS.structuralLine}/10 on {THRESHOLDS.structuralDays}+ of the last 10 working days (needs {THRESHOLDS.minHistoryDays} days of history).</li>
           <li><b>Rebalance</b> — a member averaging ≤{THRESHOLDS.strainAvg} over recent check-ins while the team sits ≥{THRESHOLDS.strainGap} points higher.</li>
           <li><b>Automate / redesign</b> — one theme behind ≥{THRESHOLDS.themeShare * 100}% of low-capacity reports (min {THRESHOLDS.themeMinCount}).</li>
-          <li><b>Data health</b> — response rate under {THRESHOLDS.responseFloor * 100}% means don't trust the averages yet.</li>
+          <li><b>Data health</b> — response rate under {THRESHOLDS.responseFloor * 100}% means don&rsquo;t trust the averages yet.</li>
         </ul>
         <p>Thresholds are starting points — tune them as the data accumulates.</p>
       </footer>
@@ -257,7 +259,9 @@ export default async function Home({
 // ── Components ──────────────────────────────────────────────────────────────
 
 function SignalPanel({ signals }: { signals: Signal[] }) {
-  const icon = { critical: "🔴", serious: "🟠", warning: "🟡", good: "🟢" } as const;
+  // No red anywhere in the brand palette — critical escalates via symbol
+  // (siren), not a darker red, so it never reintroduces the color.
+  const icon = { critical: "🚨", serious: "🟠", warning: "🟡", good: "🟢" } as const;
   const actionLabel = {
     HIRE: "Hire signal",
     REBALANCE: "Rebalance",
@@ -457,7 +461,7 @@ function MemberCard({
         </span>
       </div>
       <Sparkline caps={caps} />
-      {member.latestReason && <p className="memreason">"{member.latestReason}"</p>}
+      {member.latestReason && <p className="memreason">&ldquo;{member.latestReason}&rdquo;</p>}
       {clients.length > 0 && (
         <ul className="memclients">
           {clients.map((c, i) => (
@@ -526,15 +530,15 @@ const CSS = `
 }
 @media (min-width: 720px) { .viz-root { padding: 36px 24px 64px; } }
 
-.brandrow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.logo { height: 26px; width: auto; display: block; }
-@media (min-width: 720px) { .logo { height: 32px; } }
+.brandrow { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.logo { height: 34px; width: auto; display: block; aspect-ratio: 517.47 / 142.65; }
+@media (min-width: 720px) { .logo { height: 46px; } }
 .producttag {
-  font-size: 13px; font-weight: 600; color: var(--ink2);
-  padding-left: 12px; border-left: 1px solid var(--grid);
+  font-size: 14px; font-weight: 600; color: var(--ink2);
+  padding-left: 14px; border-left: 1px solid var(--grid);
   letter-spacing: 0.01em;
 }
-@media (min-width: 720px) { .producttag { font-size: 15px; } }
+@media (min-width: 720px) { .producttag { font-size: 17px; } }
 .sub { color: var(--ink2); margin: 14px 0 22px; max-width: 640px; font-size: 14px; line-height: 1.5; }
 
 .signals { display: flex; flex-direction: column; gap: 10px; margin-bottom: 22px; }

@@ -100,9 +100,9 @@ team gets **double check-ins** (both apps message via the same bot).
 
 ## Phase 6 — "prompt Claude" for Michele (~5 min, her clicks)
 
-For free-form questions ("weekly summary", "who's been red the most this
-month?"), Michele connects **Supabase only** to Claude — Vercel is not needed
-for data questions:
+For free-form questions ("weekly summary", "who's been in the strain zone
+most this month?"), Michele connects **Supabase only** to Claude — Vercel is
+not needed for data questions:
 
 1. In [claude.ai](https://claude.ai) → **Settings → Connectors** → add
    **Supabase** → authorize her Supabase account → select the capchecker

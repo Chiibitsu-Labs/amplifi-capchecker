@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { config } from "@/lib/config";
+import { safeCompare } from "@/lib/auth";
 import { setWebhook } from "@/lib/telegram";
 
 export const dynamic = "force-dynamic";
@@ -11,7 +12,7 @@ export const dynamic = "force-dynamic";
  */
 export async function POST(req: NextRequest) {
   const secret = new URL(req.url).searchParams.get("secret");
-  if (secret !== config.setupSecret) {
+  if (!secret || !safeCompare(secret, config.setupSecret)) {
     return NextResponse.json({ ok: false }, { status: 401 });
   }
 

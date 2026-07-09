@@ -9,7 +9,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Amplifi Capacity Instrument",
+  title: "Amplifi | Capacity Dashboard",
   description: "Daily team capacity check-ins",
 };
 
