@@ -6,6 +6,7 @@ import {
   getCheckinsForDate,
   getCurrentClientCount,
   recordSummary,
+  wasSummarySent,
 } from "@/lib/db";
 import { sendMessage } from "@/lib/telegram";
 import { escapeHtml } from "@/lib/messages";
@@ -31,6 +32,15 @@ export async function GET(req: NextRequest) {
   }
 
   const date = localDateString();
+
+  // Idempotency: send at most one summary per day. Guards against cron
+  // double-fires and cron-after-manual-trigger. ?force=1 overrides for
+  // deliberate re-sends.
+  const force = new URL(req.url).searchParams.get("force") === "1";
+  if (!force && (await wasSummarySent(date))) {
+    return NextResponse.json({ ok: true, skipped: "already_sent", date });
+  }
+
   const members = await getActiveMembers();
   const checkins = await getCheckinsForDate(date);
   const byMember = new Map(checkins.map((c) => [c.member_id, c]));

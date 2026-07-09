@@ -74,6 +74,30 @@ export async function getActiveMembers(): Promise<Member[]> {
   return (data as Member[]) ?? [];
 }
 
+/** Everyone, active or not — for the admin /team roster. */
+export async function getAllMembers(): Promise<Member[]> {
+  const { data, error } = await supabase()
+    .from("capchecker_members")
+    .select(MEMBER_COLUMNS)
+    .order("name");
+  if (error) throw error;
+  return (data as Member[]) ?? [];
+}
+
+export async function setMemberActive(
+  memberId: string,
+  isActive: boolean
+): Promise<Member | null> {
+  const { data, error } = await supabase()
+    .from("capchecker_members")
+    .update({ is_active: isActive })
+    .eq("id", memberId)
+    .select(MEMBER_COLUMNS)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as Member) ?? null;
+}
+
 export async function setMemberState(
   memberId: string,
   state: ConversationState,
@@ -183,6 +207,17 @@ export async function getCurrentClientCount(
     .eq("is_current", true);
   if (error) throw error;
   return count ?? 0;
+}
+
+/** True if today's summary already went out — guards against double-sends. */
+export async function wasSummarySent(summaryDate: string): Promise<boolean> {
+  const { data, error } = await supabase()
+    .from("capchecker_summaries")
+    .select("sent_at")
+    .eq("summary_date", summaryDate)
+    .maybeSingle();
+  if (error) throw error;
+  return !!data?.sent_at;
 }
 
 export async function recordSummary(

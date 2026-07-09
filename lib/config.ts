@@ -26,6 +26,17 @@ export const config = {
     get micheleChatId() {
       return required("MICHELE_CHAT_ID");
     },
+    /**
+     * Telegram user ids allowed to run admin commands (/team). Michele is
+     * always an admin; ADMIN_CHAT_IDS (comma-separated) adds more.
+     */
+    get adminChatIds(): Set<string> {
+      const extra = (process.env.ADMIN_CHAT_IDS ?? "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      return new Set([required("MICHELE_CHAT_ID"), ...extra]);
+    },
   },
   supabase: {
     get url() {
@@ -48,5 +59,9 @@ export const config = {
   },
   get tzOffsetMinutes() {
     return parseInt(optional("TZ_OFFSET_MINUTES", "480"), 10);
+  },
+  /** If set, the web dashboard requires ?key=<value>. Empty = dashboard open. */
+  get dashboardPassword(): string {
+    return process.env.DASHBOARD_PASSWORD ?? "";
   },
 };

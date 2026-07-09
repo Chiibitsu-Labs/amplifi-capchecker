@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { localDateString } from "@/lib/dates";
+import { config } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +27,25 @@ async function getRecent(): Promise<DailyRow[] | null> {
   }
 }
 
-export default async function Home() {
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: { key?: string };
+}) {
+  // Team capacity data is sensitive (names, workloads, reasons). When
+  // DASHBOARD_PASSWORD is set, require ?key=<password> to view.
+  if (config.dashboardPassword && searchParams.key !== config.dashboardPassword) {
+    return (
+      <main style={{ maxWidth: 480, margin: "0 auto", padding: "96px 20px" }}>
+        <h1 style={{ fontSize: 20 }}>🔒 Amplifi Capacity Checker</h1>
+        <p style={{ color: "#8b98a5" }}>
+          This dashboard is private. Open it with the access link
+          (…/?key=…) shared by your admin.
+        </p>
+      </main>
+    );
+  }
+
   const rows = await getRecent();
   const today = localDateString();
   const todays = (rows ?? []).filter((r) => r.check_date === today && r.capacity != null);

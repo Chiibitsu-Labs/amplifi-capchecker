@@ -5,14 +5,17 @@ import {
   capacityKeyboard,
   editMessageText,
   sendMessage,
+  teamKeyboard,
 } from "@/lib/telegram";
 import {
+  getAllMembers,
   getCurrentClientCount,
   getMemberByTelegramId,
   Member,
   replaceCurrentClients,
   setCheckinClientCount,
   setCheckinReason,
+  setMemberActive,
   setMemberState,
   upsertCheckinCapacity,
   upsertMember,
@@ -53,6 +56,13 @@ export async function POST(req: NextRequest) {
 
 async function handleCallback(cb: NonNullable<TelegramUpdate["callback_query"]>) {
   const data = cb.data ?? "";
+
+  const toggleMatch = data.match(/^toggle:([0-9a-f-]{36})$/);
+  if (toggleMatch) {
+    await handleAdminToggle(cb, toggleMatch[1]);
+    return;
+  }
+
   const capMatch = data.match(/^cap:(\d{1,2})$/);
   if (!capMatch) {
     await answerCallbackQuery(cb.id);
@@ -80,6 +90,45 @@ async function handleCallback(cb: NonNullable<TelegramUpdate["callback_query"]>)
     );
   }
   await sendMessage(member.telegram_user_id, msg.capacityRecorded(capacity));
+}
+
+/** Flip a member's active status from the /team roster (admins only). */
+async function handleAdminToggle(
+  cb: NonNullable<TelegramUpdate["callback_query"]>,
+  memberId: string
+) {
+  if (!isAdmin(cb.from.id)) {
+    await answerCallbackQuery(cb.id, "Admins only");
+    return;
+  }
+
+  const all = await getAllMembers();
+  const target = all.find((m) => m.id === memberId);
+  if (!target) {
+    await answerCallbackQuery(cb.id, "Member not found");
+    return;
+  }
+
+  const updated = await setMemberActive(memberId, !target.is_active);
+  await answerCallbackQuery(
+    cb.id,
+    `${target.name}: ${updated?.is_active ? "active ✅" : "paused 💤"}`
+  );
+
+  // Re-render the roster in place so the buttons reflect the new state.
+  if (cb.message) {
+    const refreshed = await getAllMembers();
+    await editMessageText(
+      cb.message.chat.id,
+      cb.message.message_id,
+      msg.teamHeader(),
+      teamKeyboard(refreshed)
+    );
+  }
+}
+
+function isAdmin(telegramUserId: number): boolean {
+  return config.telegram.adminChatIds.has(String(telegramUserId));
 }
 
 async function handleMessage(message: NonNullable<TelegramUpdate["message"]>) {
@@ -178,6 +227,23 @@ async function handleCommand(text: string, from: TelegramUser) {
   if (command === "/clients") {
     await setMemberState(member.id, "awaiting_roster");
     await sendMessage(member.telegram_user_id, msg.rosterPrompt());
+    return;
+  }
+
+  if (command === "/pause") {
+    await setMemberActive(member.id, false);
+    await setMemberState(member.id, "idle");
+    await sendMessage(from.id, msg.paused());
+    return;
+  }
+
+  if (command === "/team") {
+    if (!isAdmin(from.id)) {
+      await sendMessage(from.id, msg.notAdmin());
+      return;
+    }
+    const all = await getAllMembers();
+    await sendMessage(from.id, msg.teamHeader(), teamKeyboard(all));
     return;
   }
 

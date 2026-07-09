@@ -24,6 +24,8 @@ export function help(): string {
     `<b>Commands</b>\n` +
     `• /capacity — check in now\n` +
     `• /clients — update who you're working with\n` +
+    `• /pause — going on leave? stop daily check-ins (/start to resume)\n` +
+    `• /team — (admins) pause/resume team members\n` +
     `• /help — this message`
   );
 }
@@ -84,6 +86,24 @@ export function rosterUnchanged(count: number): string {
 
 export function reasonThanksNoRoster(): string {
   return `Thanks 🙏 Logged for today. See you tomorrow.`;
+}
+
+export function paused(): string {
+  return (
+    `You're paused — no more daily check-ins. 💤\n` +
+    `Send /start whenever you're back.`
+  );
+}
+
+export function teamHeader(): string {
+  return (
+    `<b>Team roster</b> — tap a button to pause/resume someone's daily check-ins.\n` +
+    `💤 paused members get no messages and don't appear in summaries.`
+  );
+}
+
+export function notAdmin(): string {
+  return `That command is for team admins only.`;
 }
 
 export function capacityOutOfContext(): string {

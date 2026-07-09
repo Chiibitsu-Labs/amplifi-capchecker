@@ -7,7 +7,7 @@ type InlineKeyboardButton = {
   callback_data: string;
 };
 
-type ReplyMarkup = {
+export type ReplyMarkup = {
   inline_keyboard: InlineKeyboardButton[][];
 };
 
@@ -57,13 +57,15 @@ export async function answerCallbackQuery(
 export async function editMessageText(
   chatId: string | number,
   messageId: number,
-  text: string
+  text: string,
+  replyMarkup?: ReplyMarkup
 ): Promise<void> {
   await callTelegram("editMessageText", {
     chat_id: chatId,
     message_id: messageId,
     text,
     parse_mode: "HTML",
+    ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
   });
 }
 
@@ -81,6 +83,23 @@ export async function setWebhook(url: string, secretToken: string): Promise<void
  * baked into the button labels via the accompanying prompt text.
  * callback_data is "cap:<n>".
  */
+/**
+ * Admin roster keyboard: one button per member showing current status.
+ * Tapping flips is_active. callback_data is "toggle:<member uuid>".
+ */
+export function teamKeyboard(
+  members: { id: string; name: string; is_active: boolean }[]
+): ReplyMarkup {
+  return {
+    inline_keyboard: members.map((m) => [
+      {
+        text: `${m.is_active ? "✅" : "💤"} ${m.name}`,
+        callback_data: `toggle:${m.id}`,
+      },
+    ]),
+  };
+}
+
 export function capacityKeyboard(): ReplyMarkup {
   const row = (start: number) =>
     Array.from({ length: 5 }, (_, i) => {
