@@ -11,11 +11,10 @@ import {
 import { sendMessage } from "@/lib/telegram";
 import { escapeHtml } from "@/lib/messages";
 import { localDateString, isLocalWeekday } from "@/lib/dates";
+import { getThresholds } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
-
-const LOW_CAPACITY_THRESHOLD = 3;
 
 /**
  * Daily 10am (UTC+8) summary to Michele. Vercel fires this at 02:00 UTC.
@@ -67,7 +66,11 @@ export async function GET(req: NextRequest) {
       ? responded.reduce((s, r) => s + (r.capacity ?? 0), 0) / responded.length
       : null;
 
-  const message = buildSummary({ date, rows, responded, missing, out, avg });
+  const { thresholds } = await getThresholds();
+  const message = buildSummary({
+    date, rows, responded, missing, out, avg,
+    strainZone: thresholds.strainZone,
+  });
 
   // Michele gets the summary; admins (ADMIN_CHAT_IDS) are CC'd so ops can
   // see exactly what she sees. Set is deduped, so Michele never gets two.
@@ -99,8 +102,9 @@ function buildSummary(args: {
   missing: SummaryRow[];
   out: SummaryRow[];
   avg: number | null;
+  strainZone: number;
 }): string {
-  const { date, responded, missing, out, avg } = args;
+  const { date, responded, missing, out, avg, strainZone } = args;
 
   if (responded.length === 0) {
     return (
@@ -125,11 +129,11 @@ function buildSummary(args: {
   );
 
   const lowCount = responded.filter(
-    (r) => (r.capacity ?? 99) <= LOW_CAPACITY_THRESHOLD
+    (r) => (r.capacity ?? 99) <= strainZone
   ).length;
   if (lowCount > 0) {
     lines.push(
-      `⚠️ <b>${lowCount}</b> at or below ${LOW_CAPACITY_THRESHOLD}/10 — may need support.`
+      `⚠️ <b>${lowCount}</b> at or below ${strainZone}/10 — may need support.`
     );
   }
 
@@ -137,7 +141,7 @@ function buildSummary(args: {
   for (const r of sorted) {
     // No red anywhere in the brand palette — orange is the strain color
     // everywhere else (heatmap, signal severities), so it is here too.
-    const flag = (r.capacity ?? 99) <= LOW_CAPACITY_THRESHOLD ? "🟠" : "🟢";
+    const flag = (r.capacity ?? 99) <= strainZone ? "🟠" : "🟢";
     const clients = r.clientCount > 0 ? ` · ${r.clientCount} client${r.clientCount === 1 ? "" : "s"}` : "";
     const reason = r.reason ? `\n   <i>${escapeHtml(r.reason)}</i>` : "";
     lines.push(`${flag} <b>${escapeHtml(r.name)}</b> — ${r.capacity}/10${clients}${reason}`);
