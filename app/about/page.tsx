@@ -1,7 +1,7 @@
 import { isDashboardAuthed } from "@/lib/dashboardAuth";
 import { LoginGate } from "@/components/LoginGate";
 import { DASHBOARD_CSS } from "@/lib/theme";
-import { THRESHOLD_DOCS } from "@/lib/analytics";
+import { SCALE_EPOCH, THRESHOLD_DOCS } from "@/lib/analytics";
 import { getThresholds } from "@/lib/settings";
 import { updateThresholds } from "@/app/actions";
 
@@ -68,6 +68,12 @@ export default async function About({
             <b>It&rsquo;s calibrating.</b> Structural signals (the Hire line) unlock at{" "}
             {T.minHistoryDays} working days of history. The thresholds below are a first pass —
             v1 sets baselines, reality sharpens them.
+          </li>
+          <li>
+            <b>History starts {SCALE_EPOCH}.</b> Earlier check-ins used an older, ambiguous scale
+            and are excluded from every chart and signal (they&rsquo;re still visible in the raw
+            check-in log for the record) — so the 10-day calibration clock only counts days on
+            the current scale.
           </li>
           <li>
             <b>It&rsquo;s only as good as the response rate.</b> Below{" "}

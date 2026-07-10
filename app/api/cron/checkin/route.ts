@@ -3,7 +3,7 @@ import { isAuthorizedCron } from "@/lib/auth";
 import { getActiveMembers, getCurrentClientCount, setMemberState } from "@/lib/db";
 import { capacityKeyboard, sendMessage } from "@/lib/telegram";
 import { checkinPrompt } from "@/lib/messages";
-import { isLocalWeekday } from "@/lib/dates";
+import { isLocalWeekday, localDateString } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -23,6 +23,7 @@ export async function GET(req: NextRequest) {
 
   const members = await getActiveMembers();
   const results: { member: string; ok: boolean; error?: string }[] = [];
+  const today = localDateString();
 
   for (const member of members) {
     try {
@@ -32,7 +33,7 @@ export async function GET(req: NextRequest) {
       await sendMessage(
         member.telegram_user_id,
         checkinPrompt(member, clientCount),
-        capacityKeyboard()
+        capacityKeyboard(today)
       );
       results.push({ member: member.name, ok: true });
     } catch (err) {

@@ -9,7 +9,9 @@ import {
   computeSignals,
   DayRow,
   MemberSeries,
+  postEpochDates,
   Signal,
+  SCALE_EPOCH,
   teamAverageByDate,
   themesFor,
 } from "@/lib/analytics";
@@ -77,7 +79,11 @@ export default async function Home({
 
   const { thresholds: T } = await getThresholds();
   const activeMembers = data.members.filter((m) => m.is_active);
-  const { members, dates } = buildSeries(data.rows);
+  const { members, dates: allDates } = buildSeries(data.rows);
+  // Every aggregate view (signals, KPIs, heatmap, trend, theme analysis)
+  // only trusts days on/after the 2026-07-10 scale flip — see SCALE_EPOCH.
+  // Older rows stay visible, unfiltered, in the raw check-in log below.
+  const dates = postEpochDates(allDates);
   const daily = teamAverageByDate(members, dates);
   const signals = computeSignals(members, dates, activeMembers.length, T);
 
@@ -120,6 +126,7 @@ export default async function Home({
 
   const heatDates = dates.slice(-15);
   const recentRows = [...data.rows].reverse().slice(0, 40);
+  const hasPreEpochRows = recentRows.some((r) => r.check_date < SCALE_EPOCH);
   const aboutHref = searchParams.key ? `/about?key=${encodeURIComponent(searchParams.key)}` : "/about";
 
   return (
@@ -216,6 +223,13 @@ export default async function Home({
 
       <section className="card">
         <h2>Check-in log</h2>
+        {hasPreEpochRows && (
+          <p className="cardsub">
+            Rows before {SCALE_EPOCH} used the old, ambiguous scale (before the 10 = drowning
+            convention) — kept here for the record, but excluded from every chart and signal
+            above.
+          </p>
+        )}
         <div className="tablewrap">
           <table>
             <thead>

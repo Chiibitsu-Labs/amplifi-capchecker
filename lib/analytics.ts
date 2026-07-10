@@ -51,13 +51,20 @@ function envNumber(name: string, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
+// The 2026-07-10 scale flip (10 = drowning, was 1 = drowning) reused these
+// four env var names for values with the OPPOSITE meaning. A pre-flip
+// deployment's THRESHOLD_STRAIN_ZONE=3, read under the new orientation,
+// silently makes almost every check-in count as strained. Renamed with a
+// "_V2" suffix so any old-scale env var is orphaned (ignored) rather than
+// misapplied — see the matching settingsKey rename in THRESHOLD_DOCS below
+// for the same protection on saved in-app overrides (Codex P1, 2026-07-10).
 export const THRESHOLDS = {
-  strainZone: envNumber("THRESHOLD_STRAIN_ZONE", 8), // capacity ≥ this = strained (10 = drowning)
-  structuralLine: envNumber("THRESHOLD_STRUCTURAL_LINE", 6), // team avg above this = overloaded day
+  strainZone: envNumber("THRESHOLD_STRAIN_ZONE_V2", 8), // capacity ≥ this = strained (10 = drowning)
+  structuralLine: envNumber("THRESHOLD_STRUCTURAL_LINE_V2", 6), // team avg above this = overloaded day
   structuralDays: envNumber("THRESHOLD_STRUCTURAL_DAYS", 7), // ...on ≥N of last 10 working days = hire signal
   minHistoryDays: envNumber("THRESHOLD_MIN_HISTORY_DAYS", 10), // days of data before structural calls are trusted
-  strainAvg: envNumber("THRESHOLD_STRAIN_AVG", 7.5), // member 5-day avg ≥ this = individual strain
-  strainGap: envNumber("THRESHOLD_STRAIN_GAP", 2), // ...while team sits ≥ this much LOWER (less busy) = rebalance
+  strainAvg: envNumber("THRESHOLD_STRAIN_AVG_V2", 7.5), // member 5-day avg ≥ this = individual strain
+  strainGap: envNumber("THRESHOLD_STRAIN_GAP_V2", 2), // ...while team sits ≥ this much LOWER (less busy) = rebalance
   themeShare: envNumber("THRESHOLD_THEME_SHARE", 0.4), // one theme ≥40% of high-load reasons = automate
   themeMinCount: envNumber("THRESHOLD_THEME_MIN_COUNT", 3),
   responseFloor: envNumber("THRESHOLD_RESPONSE_FLOOR", 0.7), // 7-day response rate below this = data warning
@@ -68,9 +75,15 @@ export type Thresholds = { [K in keyof typeof THRESHOLDS]: number };
 /**
  * Docs + validation bounds for the /about settings panel — one row per
  * tunable threshold. min/max/step also drive the form inputs.
+ *
+ * settingsKey is the row key used in capchecker_settings (in-app overrides).
+ * It defaults to `key`, but the four orientation-flipped thresholds use a
+ * "_v2" settingsKey so a value saved before the 2026-07-10 scale flip is
+ * orphaned rather than reapplied with the opposite meaning (Codex P1).
  */
 export const THRESHOLD_DOCS: {
   key: keyof Thresholds;
+  settingsKey: string;
   envVar: string;
   label: string;
   default: number;
@@ -79,16 +92,33 @@ export const THRESHOLD_DOCS: {
   step: number;
   unit?: string;
 }[] = [
-  { key: "structuralLine", envVar: "THRESHOLD_STRUCTURAL_LINE", label: "Team average above this = an overloaded day (10 = drowning)", default: 6, min: 1, max: 10, step: 0.5 },
-  { key: "structuralDays", envVar: "THRESHOLD_STRUCTURAL_DAYS", label: "...on this many of the last 10 working days triggers Hire", default: 7, min: 1, max: 10, step: 1 },
-  { key: "minHistoryDays", envVar: "THRESHOLD_MIN_HISTORY_DAYS", label: "Working days of history required before structural signals unlock", default: 10, min: 1, max: 60, step: 1 },
-  { key: "strainAvg", envVar: "THRESHOLD_STRAIN_AVG", label: "Individual 5-day average at/above this = personal strain", default: 7.5, min: 1, max: 10, step: 0.5 },
-  { key: "strainGap", envVar: "THRESHOLD_STRAIN_GAP", label: "...while the team sits at least this many points lower (less busy), triggers Rebalance", default: 2, min: 0, max: 9, step: 0.5 },
-  { key: "themeShare", envVar: "THRESHOLD_THEME_SHARE", label: "Share of high-load reports one theme must dominate to trigger Automate", default: 0.4, min: 0.05, max: 1, step: 0.05, unit: "0.4 = 40%" },
-  { key: "themeMinCount", envVar: "THRESHOLD_THEME_MIN_COUNT", label: "Minimum occurrences of a theme before it can trigger Automate", default: 3, min: 1, max: 50, step: 1 },
-  { key: "responseFloor", envVar: "THRESHOLD_RESPONSE_FLOOR", label: "7-day response rate floor before a Data Health warning fires", default: 0.7, min: 0.1, max: 1, step: 0.05, unit: "0.7 = 70%" },
-  { key: "strainZone", envVar: "THRESHOLD_STRAIN_ZONE", label: "Capacity at/above this = the strain zone (heatmap color, Watch signal, KPI tile)", default: 8, min: 1, max: 10, step: 1 },
+  { key: "structuralLine", settingsKey: "structuralLine_v2", envVar: "THRESHOLD_STRUCTURAL_LINE_V2", label: "Team average above this = an overloaded day (10 = drowning)", default: 6, min: 1, max: 10, step: 0.5 },
+  { key: "structuralDays", settingsKey: "structuralDays", envVar: "THRESHOLD_STRUCTURAL_DAYS", label: "...on this many of the last 10 working days triggers Hire", default: 7, min: 1, max: 10, step: 1 },
+  { key: "minHistoryDays", settingsKey: "minHistoryDays", envVar: "THRESHOLD_MIN_HISTORY_DAYS", label: "Working days of history required before structural signals unlock", default: 10, min: 1, max: 60, step: 1 },
+  { key: "strainAvg", settingsKey: "strainAvg_v2", envVar: "THRESHOLD_STRAIN_AVG_V2", label: "Individual 5-day average at/above this = personal strain", default: 7.5, min: 1, max: 10, step: 0.5 },
+  { key: "strainGap", settingsKey: "strainGap_v2", envVar: "THRESHOLD_STRAIN_GAP_V2", label: "...while the team sits at least this many points lower (less busy), triggers Rebalance", default: 2, min: 0, max: 9, step: 0.5 },
+  { key: "themeShare", settingsKey: "themeShare", envVar: "THRESHOLD_THEME_SHARE", label: "Share of high-load reports one theme must dominate to trigger Automate", default: 0.4, min: 0.05, max: 1, step: 0.05, unit: "0.4 = 40%" },
+  { key: "themeMinCount", settingsKey: "themeMinCount", envVar: "THRESHOLD_THEME_MIN_COUNT", label: "Minimum occurrences of a theme before it can trigger Automate", default: 3, min: 1, max: 50, step: 1 },
+  { key: "responseFloor", settingsKey: "responseFloor", envVar: "THRESHOLD_RESPONSE_FLOOR", label: "7-day response rate floor before a Data Health warning fires", default: 0.7, min: 0.1, max: 1, step: 0.05, unit: "0.7 = 70%" },
+  { key: "strainZone", settingsKey: "strainZone_v2", envVar: "THRESHOLD_STRAIN_ZONE_V2", label: "Capacity at/above this = the strain zone (heatmap color, Watch signal, KPI tile)", default: 8, min: 1, max: 10, step: 1 },
 ];
+
+/**
+ * The scale flip's effective date (2026-07-10, local/UTC+8). Check-in days
+ * before this were collected under the OLD, ambiguous prompt where some
+ * people read 10 as "busy" and others as "open" — averaging them into the
+ * new load-based signals would silently corrupt hire/rebalance/automate
+ * (Codex P1). Signal computation and the dashboard's aggregate views
+ * (KPI tiles, heatmap, trend, theme analysis) only consider days on or
+ * after this date; the raw check-in log still shows every row for a full
+ * audit trail, unfiltered.
+ */
+export const SCALE_EPOCH = "2026-07-10";
+
+/** Working days on/after SCALE_EPOCH — the only days signals/aggregates trust. */
+export function postEpochDates(dates: string[]): string[] {
+  return dates.filter((d) => d >= SCALE_EPOCH);
+}
 
 // ── Reason themes (keyword v1; an LLM pass can replace this later) ─────────
 const THEME_KEYWORDS: [string, RegExp][] = [
@@ -171,10 +201,13 @@ function avg(nums: number[]): number | null {
 // ── The router ──────────────────────────────────────────────────────────────
 export function computeSignals(
   members: MemberSeries[],
-  dates: string[],
+  allDates: string[],
   activeMemberCount: number,
   T: Thresholds = THRESHOLDS
 ): Signal[] {
+  // Never let pre-flip (old-scale) days into a signal computation — see
+  // SCALE_EPOCH. Everything below derives from `dates`, not `allDates`.
+  const dates = postEpochDates(allDates);
   const signals: Signal[] = [];
   const daily = teamAverageByDate(members, dates);
   const today = dates[dates.length - 1];

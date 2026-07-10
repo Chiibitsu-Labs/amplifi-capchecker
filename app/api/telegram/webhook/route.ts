@@ -265,7 +265,7 @@ async function handleCommand(text: string, from: TelegramUser) {
     await sendMessage(
       member.telegram_user_id,
       msg.checkinPrompt(member, clientCount),
-      capacityKeyboard()
+      capacityKeyboard(localDateString())
     );
     return;
   }
