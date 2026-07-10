@@ -9,7 +9,6 @@ import {
   computeSignals,
   DayRow,
   MemberSeries,
-  postEpochDates,
   Signal,
   SCALE_EPOCH,
   teamAverageByDate,
@@ -79,11 +78,17 @@ export default async function Home({
 
   const { thresholds: T } = await getThresholds();
   const activeMembers = data.members.filter((m) => m.is_active);
-  const { members, dates: allDates } = buildSeries(data.rows);
-  // Every aggregate view (signals, KPIs, heatmap, trend, theme analysis)
-  // only trusts days on/after the scale flip's epoch — see SCALE_EPOCH.
-  // Older rows stay visible, unfiltered, in the raw check-in log below.
-  const dates = postEpochDates(allDates);
+  // Built from post-epoch rows only, so `members` (days/latestReason/
+  // latestClientCount) and `dates` are trusted end to end — no call site
+  // downstream (KPIs, heatmap, trend, theme analysis, member cards) can
+  // accidentally reach back into pre-flip, old-scale data (Codex P2: an
+  // earlier version filtered only the `dates` array, which left
+  // `member.days.get(today)` and `member.latestReason` on the Team cards
+  // still reading straight from unfiltered rows). Older rows stay visible,
+  // unfiltered, in the raw check-in log below.
+  const { members, dates } = buildSeries(
+    data.rows.filter((r) => r.check_date >= SCALE_EPOCH)
+  );
   const daily = teamAverageByDate(members, dates);
   const signals = computeSignals(members, dates, activeMembers.length, T);
 
@@ -97,12 +102,11 @@ export default async function Home({
       ? last7.reduce((s, d) => s + d.responded + d.out, 0) /
         (last7.length * activeMembers.length)
       : null;
-  // Guarded by the same epoch as everything else above (`dates` is already
-  // filtered) — otherwise a pre-epoch "today" would compare old-scale
-  // capacities against the new-scale strainZone threshold (Codex P2).
-  const strainedToday = dates.includes(today)
-    ? members.filter((m) => (m.days.get(today)?.capacity ?? -1) >= T.strainZone).length
-    : 0;
+  // `members` only contains post-epoch rows (see buildSeries call above),
+  // so a pre-epoch "today" naturally yields no entries here.
+  const strainedToday = members.filter(
+    (m) => (m.days.get(today)?.capacity ?? -1) >= T.strainZone
+  ).length;
 
   const clientsByMemberName = new Map<string, ClientRow[]>();
   for (const c of data.clients) {
