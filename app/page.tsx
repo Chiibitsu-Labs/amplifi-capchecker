@@ -81,7 +81,7 @@ export default async function Home({
   const activeMembers = data.members.filter((m) => m.is_active);
   const { members, dates: allDates } = buildSeries(data.rows);
   // Every aggregate view (signals, KPIs, heatmap, trend, theme analysis)
-  // only trusts days on/after the 2026-07-10 scale flip — see SCALE_EPOCH.
+  // only trusts days on/after the scale flip's epoch — see SCALE_EPOCH.
   // Older rows stay visible, unfiltered, in the raw check-in log below.
   const dates = postEpochDates(allDates);
   const daily = teamAverageByDate(members, dates);

@@ -200,6 +200,15 @@ async function handleMessage(message: NonNullable<TelegramUpdate["message"]>) {
       const date =
         (member.state_context?.date as string | undefined) ?? localDateString();
       await setCheckinReason(member.id, date, text);
+      if (date !== localDateString()) {
+        // Correcting a PAST day's number (tapped a stale redo button after
+        // the date rolled over). Skip Q3 — the roster is a "right now"
+        // concept, so answering it here would overwrite today's live
+        // roster with a snapshot dated in the past (Codex P2, 2026-07-10).
+        await setMemberState(member.id, "idle");
+        await sendMessage(from.id, msg.reasonUpdated(date));
+        break;
+      }
       // Q3 of the daily flow: client/task context, with a "same" shortcut.
       const existingCount = await getCurrentClientCount(member.id);
       await setMemberState(member.id, "awaiting_roster", { date, daily: true });

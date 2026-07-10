@@ -117,8 +117,13 @@ export function rosterUnchanged(count: number): string {
   return `Kept your ${count} client${count === 1 ? "" : "s"} as-is. That's you done for today, thanks 🙏`;
 }
 
-export function reasonThanksNoRoster(): string {
-  return `Thanks 🙏 Logged for today. See you tomorrow.`;
+/**
+ * Confirmation when a PAST day's reason is corrected via the redo button.
+ * No roster follow-up — the client roster is a "right now" concept, so
+ * replaying it against an old date would overwrite today's live roster.
+ */
+export function reasonUpdated(date: string): string {
+  return `Thanks 🙏 Updated for <b>${date}</b>.`;
 }
 
 export function paused(): string {

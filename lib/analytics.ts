@@ -104,7 +104,7 @@ export const THRESHOLD_DOCS: {
 ];
 
 /**
- * The scale flip's effective date (2026-07-10, local/UTC+8). Check-in days
+ * The first working day fully on the new scale (local/UTC+8). Check-in days
  * before this were collected under the OLD, ambiguous prompt where some
  * people read 10 as "busy" and others as "open" — averaging them into the
  * new load-based signals would silently corrupt hire/rebalance/automate
@@ -112,8 +112,14 @@ export const THRESHOLD_DOCS: {
  * (KPI tiles, heatmap, trend, theme analysis) only consider days on or
  * after this date; the raw check-in log still shows every row for a full
  * audit trail, unfiltered.
+ *
+ * Set to 2026-07-11, one day AFTER the flip actually shipped (2026-07-10):
+ * that morning's 08:00 check-in blast already went out under the old,
+ * pre-flip prompt before this deploy landed, so same-day responses are
+ * still old-scale data even though their check_date is "today" (Codex P1
+ * round 2 — a plain `>= 2026-07-10` cutoff would have let them through).
  */
-export const SCALE_EPOCH = "2026-07-10";
+export const SCALE_EPOCH = "2026-07-11";
 
 /** Working days on/after SCALE_EPOCH — the only days signals/aggregates trust. */
 export function postEpochDates(dates: string[]): string[] {
