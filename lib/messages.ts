@@ -38,31 +38,31 @@ export function checkinPrompt(member: Member, clientCount: number): string {
   return (
     `Morning ${escapeHtml(firstName(member))}! ☀️\n\n` +
     `${clientLine}How's your capacity today?\n` +
-    `<i>1 = drowning · 10 = wide open</i>\n\n` +
+    `<i>1 = wide open · 10 = drowning (fully loaded)</i>\n\n` +
     `Tap a number 👇`
   );
 }
 
 /**
- * Q2 confirms the tapped number IN WORDS before asking why — so anyone who
- * read the scale backwards ("does 10 mean busy or free?") sees it instantly
- * and can tap the redo button under this message. Agreed with Michele after
- * day-1 misreads: no scale flip, no extra prompt — the confirmation rides on
- * the question they already get. 1 = drowning, 10 = wide open.
+ * Q2 confirms the tapped number IN WORDS before asking why, so a misread
+ * surfaces instantly and can be fixed with the redo button under this message.
+ * SCALE (decided with Michele): the team reads 10 as "full", so that's now the
+ * definition — 10 = drowning (fully loaded), 1 = wide open. Higher = busier.
+ * Bands mirror the dashboard heatmap legend.
  */
 export function capacityRecorded(capacity: number): string {
   let read: string;
   let ask: string;
-  if (capacity <= 2) {
-    read = "you're <b>drowning — almost no room left</b>";
+  if (capacity >= 9) {
+    read = "you're <b>drowning — fully loaded, no room left</b>";
     ask = "In one line, what's eating your day?";
-  } else if (capacity <= 4) {
+  } else if (capacity >= 7) {
     read = "you're <b>stretched thin</b>";
     ask = "In one line, what's driving that today?";
-  } else if (capacity <= 6) {
+  } else if (capacity >= 5) {
     read = "you're <b>holding steady</b> — some room, not lots";
     ask = "In one line, what's taking most of your day?";
-  } else if (capacity <= 8) {
+  } else if (capacity >= 3) {
     read = "you have <b>good available capacity</b>";
     ask = "In one line, what are you working on right now?";
   } else {
@@ -75,7 +75,7 @@ export function capacityRecorded(capacity: number): string {
 export function redoPrompt(): string {
   return (
     `No problem — how's your capacity today?\n` +
-    `<i>1 = drowning · 10 = wide open</i>\n\n` +
+    `<i>1 = wide open · 10 = drowning (fully loaded)</i>\n\n` +
     `Tap a number 👇`
   );
 }

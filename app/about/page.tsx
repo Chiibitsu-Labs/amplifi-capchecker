@@ -48,9 +48,10 @@ export default async function About({
       <section className="card">
         <h2>What this measures</h2>
         <p className="cardsub">
-          Each person&rsquo;s self-reported capacity (1–10), daily, plus why, and their live
-          client load. Self-reported is the point — it&rsquo;s the early-warning system. People
-          feel strain weeks before deliveries slip.
+          Each person&rsquo;s self-reported load (1–10), daily, plus why, and their live client
+          list. <b>10 = drowning (fully loaded), 1 = wide open</b> — higher means busier.
+          Self-reported is the point — it&rsquo;s the early-warning system. People feel strain
+          weeks before deliveries slip.
         </p>
       </section>
 
@@ -90,19 +91,19 @@ export default async function About({
         <h2>How the signals are computed</h2>
         <ul className="doclist">
           <li>
-            <b>Hire</b> — team average below {T.structuralLine}/10 on {T.structuralDays}+ of the
+            <b>Hire</b> — team average above {T.structuralLine}/10 on {T.structuralDays}+ of the
             last 10 working days (needs {T.minHistoryDays} days of history).
           </li>
           <li>
-            <b>Rebalance</b> — a member averaging ≤{T.strainAvg} over recent check-ins while the
-            team sits ≥{T.strainGap} points higher.
+            <b>Rebalance</b> — a member averaging ≥{T.strainAvg} over recent check-ins while the
+            team sits ≥{T.strainGap} points lower (less busy).
           </li>
           <li>
             <b>Automate / redesign</b> — one theme behind ≥{Math.round(T.themeShare * 100)}% of
-            low-capacity reports (min {T.themeMinCount}).
+            high-load reports (min {T.themeMinCount}).
           </li>
           <li>
-            <b>Watch</b> — 2+ people in the strain zone (≤{T.strainZone}/10) on the same day.
+            <b>Watch</b> — 2+ people in the strain zone (≥{T.strainZone}/10) on the same day.
           </li>
           <li>
             <b>Data health</b> — response rate under {Math.round(T.responseFloor * 100)}% means

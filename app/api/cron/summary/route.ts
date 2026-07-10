@@ -115,9 +115,10 @@ function buildSummary(args: {
     );
   }
 
-  // Lowest capacity first — the people who may need support surface at the top.
+  // Highest load first — the people who may need support surface at the top
+  // (10 = drowning).
   const sorted = [...responded].sort(
-    (a, b) => (a.capacity ?? 99) - (b.capacity ?? 99)
+    (a, b) => (b.capacity ?? -1) - (a.capacity ?? -1)
   );
 
   const lines: string[] = [];
@@ -128,12 +129,12 @@ function buildSummary(args: {
     } responded`
   );
 
-  const lowCount = responded.filter(
-    (r) => (r.capacity ?? 99) <= strainZone
+  const strainedCount = responded.filter(
+    (r) => (r.capacity ?? -1) >= strainZone
   ).length;
-  if (lowCount > 0) {
+  if (strainedCount > 0) {
     lines.push(
-      `⚠️ <b>${lowCount}</b> at or below ${strainZone}/10 — may need support.`
+      `⚠️ <b>${strainedCount}</b> at or above ${strainZone}/10 — may need support.`
     );
   }
 
@@ -141,7 +142,7 @@ function buildSummary(args: {
   for (const r of sorted) {
     // No red anywhere in the brand palette — orange is the strain color
     // everywhere else (heatmap, signal severities), so it is here too.
-    const flag = (r.capacity ?? 99) <= strainZone ? "🟠" : "🟢";
+    const flag = (r.capacity ?? -1) >= strainZone ? "🟠" : "🟢";
     const clients = r.clientCount > 0 ? ` · ${r.clientCount} client${r.clientCount === 1 ? "" : "s"}` : "";
     const reason = r.reason ? `\n   <i>${escapeHtml(r.reason)}</i>` : "";
     lines.push(`${flag} <b>${escapeHtml(r.name)}</b> — ${r.capacity}/10${clients}${reason}`);
