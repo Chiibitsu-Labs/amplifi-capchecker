@@ -100,17 +100,33 @@ export function teamKeyboard(
   };
 }
 
-export function capacityKeyboard(): ReplyMarkup {
+// Callbacks carry the check-in date they belong to (cap:<n>:<date>,
+// cap:redo:<date>, cap:out:<date>) so a button tapped later — even after the
+// local date has rolled over — corrects the ORIGINAL day, not whatever
+// "today" happens to be when it's tapped.
+const dateSuffix = (date?: string) => (date ? `:${date}` : "");
+
+/** Rides under the Q2 confirmation so a misread number is one tap to fix. */
+export function redoKeyboard(date: string): ReplyMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "↩️ Not right? Change my number", callback_data: `cap:redo:${date}` }],
+    ],
+  };
+}
+
+export function capacityKeyboard(date?: string): ReplyMarkup {
+  const suffix = dateSuffix(date);
   const row = (start: number) =>
     Array.from({ length: 5 }, (_, i) => {
       const n = start + i;
-      return { text: String(n), callback_data: `cap:${n}` };
+      return { text: String(n), callback_data: `cap:${n}${suffix}` };
     });
   return {
     inline_keyboard: [
       row(1),
       row(6),
-      [{ text: "🤒 Out today (sick / leave)", callback_data: "cap:out" }],
+      [{ text: "🤒 Out today (sick / leave)", callback_data: `cap:out${suffix}` }],
     ],
   };
 }

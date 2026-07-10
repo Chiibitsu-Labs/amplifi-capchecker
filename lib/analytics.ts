@@ -2,6 +2,16 @@
  * The "when-to-hire instrument": turns raw check-ins into the signals and
  * thresholds Michele uses to decide hire / automate-or-redesign / rebalance.
  * Pure functions — no I/O — so every rule is testable and explainable.
+ *
+ * ── SCALE ORIENTATION (decided with Michele — read before touching a
+ *    comparison) ──────────────────────────────────────────────────────────
+ * The `capacity` number is a LOAD / BUSYNESS rating:
+ *     10 = drowning (fully loaded, no spare capacity)
+ *      1 = wide open (lots of spare capacity)
+ * So HIGHER = busier = MORE strained. Every threshold comparison below is
+ * "capacity >= line" for strain, "avg > line" for an overloaded day, etc.
+ * If you ever see a `<=` against a capacity here, it's a bug from the old
+ * (inverted) scale — the team reads 10 as "full", so we match them.
  */
 
 export type DayRow = {
@@ -41,14 +51,21 @@ function envNumber(name: string, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
+// The 2026-07-10 scale flip (10 = drowning, was 1 = drowning) reused these
+// four env var names for values with the OPPOSITE meaning. A pre-flip
+// deployment's THRESHOLD_STRAIN_ZONE=3, read under the new orientation,
+// silently makes almost every check-in count as strained. Renamed with a
+// "_V2" suffix so any old-scale env var is orphaned (ignored) rather than
+// misapplied — see the matching settingsKey rename in THRESHOLD_DOCS below
+// for the same protection on saved in-app overrides (Codex P1, 2026-07-10).
 export const THRESHOLDS = {
-  strainZone: envNumber("THRESHOLD_STRAIN_ZONE", 3), // capacity ≤ this = strained
-  structuralLine: envNumber("THRESHOLD_STRUCTURAL_LINE", 5), // team avg below this = overloaded day
+  strainZone: envNumber("THRESHOLD_STRAIN_ZONE_V2", 8), // capacity ≥ this = strained (10 = drowning)
+  structuralLine: envNumber("THRESHOLD_STRUCTURAL_LINE_V2", 6), // team avg above this = overloaded day
   structuralDays: envNumber("THRESHOLD_STRUCTURAL_DAYS", 7), // ...on ≥N of last 10 working days = hire signal
   minHistoryDays: envNumber("THRESHOLD_MIN_HISTORY_DAYS", 10), // days of data before structural calls are trusted
-  strainAvg: envNumber("THRESHOLD_STRAIN_AVG", 3.5), // member 5-day avg ≤ this = individual strain
-  strainGap: envNumber("THRESHOLD_STRAIN_GAP", 2), // ...while team is ≥ this much higher = rebalance
-  themeShare: envNumber("THRESHOLD_THEME_SHARE", 0.4), // one theme ≥40% of low-capacity reasons = automate
+  strainAvg: envNumber("THRESHOLD_STRAIN_AVG_V2", 7.5), // member 5-day avg ≥ this = individual strain
+  strainGap: envNumber("THRESHOLD_STRAIN_GAP_V2", 2), // ...while team sits ≥ this much LOWER (less busy) = rebalance
+  themeShare: envNumber("THRESHOLD_THEME_SHARE", 0.4), // one theme ≥40% of high-load reasons = automate
   themeMinCount: envNumber("THRESHOLD_THEME_MIN_COUNT", 3),
   responseFloor: envNumber("THRESHOLD_RESPONSE_FLOOR", 0.7), // 7-day response rate below this = data warning
 };
@@ -58,9 +75,15 @@ export type Thresholds = { [K in keyof typeof THRESHOLDS]: number };
 /**
  * Docs + validation bounds for the /about settings panel — one row per
  * tunable threshold. min/max/step also drive the form inputs.
+ *
+ * settingsKey is the row key used in capchecker_settings (in-app overrides).
+ * It defaults to `key`, but the four orientation-flipped thresholds use a
+ * "_v2" settingsKey so a value saved before the 2026-07-10 scale flip is
+ * orphaned rather than reapplied with the opposite meaning (Codex P1).
  */
 export const THRESHOLD_DOCS: {
   key: keyof Thresholds;
+  settingsKey: string;
   envVar: string;
   label: string;
   default: number;
@@ -69,16 +92,39 @@ export const THRESHOLD_DOCS: {
   step: number;
   unit?: string;
 }[] = [
-  { key: "structuralLine", envVar: "THRESHOLD_STRUCTURAL_LINE", label: "Team average below this = an overloaded day", default: 5, min: 1, max: 10, step: 0.5 },
-  { key: "structuralDays", envVar: "THRESHOLD_STRUCTURAL_DAYS", label: "...on this many of the last 10 working days triggers Hire", default: 7, min: 1, max: 10, step: 1 },
-  { key: "minHistoryDays", envVar: "THRESHOLD_MIN_HISTORY_DAYS", label: "Working days of history required before structural signals unlock", default: 10, min: 1, max: 60, step: 1 },
-  { key: "strainAvg", envVar: "THRESHOLD_STRAIN_AVG", label: "Individual 5-day average at/below this = personal strain", default: 3.5, min: 1, max: 10, step: 0.5 },
-  { key: "strainGap", envVar: "THRESHOLD_STRAIN_GAP", label: "...while the team sits at least this many points higher, triggers Rebalance", default: 2, min: 0, max: 9, step: 0.5 },
-  { key: "themeShare", envVar: "THRESHOLD_THEME_SHARE", label: "Share of low-capacity reports one theme must dominate to trigger Automate", default: 0.4, min: 0.05, max: 1, step: 0.05, unit: "0.4 = 40%" },
-  { key: "themeMinCount", envVar: "THRESHOLD_THEME_MIN_COUNT", label: "Minimum occurrences of a theme before it can trigger Automate", default: 3, min: 1, max: 50, step: 1 },
-  { key: "responseFloor", envVar: "THRESHOLD_RESPONSE_FLOOR", label: "7-day response rate floor before a Data Health warning fires", default: 0.7, min: 0.1, max: 1, step: 0.05, unit: "0.7 = 70%" },
-  { key: "strainZone", envVar: "THRESHOLD_STRAIN_ZONE", label: "Capacity at/below this = the strain zone (heatmap color, Watch signal, KPI tile)", default: 3, min: 1, max: 10, step: 1 },
+  { key: "structuralLine", settingsKey: "structuralLine_v2", envVar: "THRESHOLD_STRUCTURAL_LINE_V2", label: "Team average above this = an overloaded day (10 = drowning)", default: 6, min: 1, max: 10, step: 0.5 },
+  { key: "structuralDays", settingsKey: "structuralDays", envVar: "THRESHOLD_STRUCTURAL_DAYS", label: "...on this many of the last 10 working days triggers Hire", default: 7, min: 1, max: 10, step: 1 },
+  { key: "minHistoryDays", settingsKey: "minHistoryDays", envVar: "THRESHOLD_MIN_HISTORY_DAYS", label: "Working days of history required before structural signals unlock", default: 10, min: 1, max: 60, step: 1 },
+  { key: "strainAvg", settingsKey: "strainAvg_v2", envVar: "THRESHOLD_STRAIN_AVG_V2", label: "Individual 5-day average at/above this = personal strain", default: 7.5, min: 1, max: 10, step: 0.5 },
+  { key: "strainGap", settingsKey: "strainGap_v2", envVar: "THRESHOLD_STRAIN_GAP_V2", label: "...while the team sits at least this many points lower (less busy), triggers Rebalance", default: 2, min: 0, max: 9, step: 0.5 },
+  { key: "themeShare", settingsKey: "themeShare", envVar: "THRESHOLD_THEME_SHARE", label: "Share of high-load reports one theme must dominate to trigger Automate", default: 0.4, min: 0.05, max: 1, step: 0.05, unit: "0.4 = 40%" },
+  { key: "themeMinCount", settingsKey: "themeMinCount", envVar: "THRESHOLD_THEME_MIN_COUNT", label: "Minimum occurrences of a theme before it can trigger Automate", default: 3, min: 1, max: 50, step: 1 },
+  { key: "responseFloor", settingsKey: "responseFloor", envVar: "THRESHOLD_RESPONSE_FLOOR", label: "7-day response rate floor before a Data Health warning fires", default: 0.7, min: 0.1, max: 1, step: 0.05, unit: "0.7 = 70%" },
+  { key: "strainZone", settingsKey: "strainZone_v2", envVar: "THRESHOLD_STRAIN_ZONE_V2", label: "Capacity at/above this = the strain zone (heatmap color, Watch signal, KPI tile)", default: 8, min: 1, max: 10, step: 1 },
 ];
+
+/**
+ * The first working day fully on the new scale (local/UTC+8). Check-in days
+ * before this were collected under the OLD, ambiguous prompt where some
+ * people read 10 as "busy" and others as "open" — averaging them into the
+ * new load-based signals would silently corrupt hire/rebalance/automate
+ * (Codex P1). Signal computation and the dashboard's aggregate views
+ * (KPI tiles, heatmap, trend, theme analysis) only consider days on or
+ * after this date; the raw check-in log still shows every row for a full
+ * audit trail, unfiltered.
+ *
+ * Set to 2026-07-11, one day AFTER the flip actually shipped (2026-07-10):
+ * that morning's 08:00 check-in blast already went out under the old,
+ * pre-flip prompt before this deploy landed, so same-day responses are
+ * still old-scale data even though their check_date is "today" (Codex P1
+ * round 2 — a plain `>= 2026-07-10` cutoff would have let them through).
+ */
+export const SCALE_EPOCH = "2026-07-11";
+
+/** Working days on/after SCALE_EPOCH — the only days signals/aggregates trust. */
+export function postEpochDates(dates: string[]): string[] {
+  return dates.filter((d) => d >= SCALE_EPOCH);
+}
 
 // ── Reason themes (keyword v1; an LLM pass can replace this later) ─────────
 const THEME_KEYWORDS: [string, RegExp][] = [
@@ -161,10 +207,13 @@ function avg(nums: number[]): number | null {
 // ── The router ──────────────────────────────────────────────────────────────
 export function computeSignals(
   members: MemberSeries[],
-  dates: string[],
+  allDates: string[],
   activeMemberCount: number,
   T: Thresholds = THRESHOLDS
 ): Signal[] {
+  // Never let pre-flip (old-scale) days into a signal computation — see
+  // SCALE_EPOCH. Everything below derives from `dates`, not `allDates`.
+  const dates = postEpochDates(allDates);
   const signals: Signal[] = [];
   const daily = teamAverageByDate(members, dates);
   const today = dates[dates.length - 1];
@@ -180,22 +229,22 @@ export function computeSignals(
     });
   }
 
-  // HIRE — sustained team-wide overload.
+  // HIRE — sustained team-wide overload (high load = busy).
   if (dates.length >= T.minHistoryDays) {
     const last10 = lastN(daily, 10);
-    const lowDays = last10.filter((d) => d.avg < T.structuralLine).length;
-    if (lowDays >= T.structuralDays) {
+    const busyDays = last10.filter((d) => d.avg > T.structuralLine).length;
+    if (busyDays >= T.structuralDays) {
       signals.push({
         severity: "critical",
         action: "HIRE",
-        title: `Structural overload: team below ${T.structuralLine}/10 on ${lowDays} of the last 10 working days`,
+        title: `Structural overload: team above ${T.structuralLine}/10 on ${busyDays} of the last 10 working days`,
         detail:
           "Sustained team-wide strain that individual fixes won't solve. If the reason themes below aren't automatable, this is the hire signal.",
       });
     }
   }
 
-  // REBALANCE — one person sinking while the team floats.
+  // REBALANCE — one person swamped while the team has headroom.
   const team7 = avg(lastN(daily, 7).map((d) => d.avg));
   for (const m of members) {
     const caps = dates
@@ -205,32 +254,32 @@ export function computeSignals(
     if (
       m5 != null &&
       caps.length >= 3 &&
-      m5 <= T.strainAvg &&
+      m5 >= T.strainAvg &&
       team7 != null &&
-      team7 - m5 >= T.strainGap
+      m5 - team7 >= T.strainGap
     ) {
       signals.push({
         severity: "serious",
         action: "REBALANCE",
-        title: `${m.name} is strained: ${m5.toFixed(1)}/10 average over recent check-ins vs team ${team7.toFixed(1)}`,
+        title: `${m.name} is swamped: ${m5.toFixed(1)}/10 average over recent check-ins vs team ${team7.toFixed(1)}`,
         detail:
           "Individual strain while the team has headroom — a workload rebalance or delegation candidate before it becomes attrition.",
       });
     }
   }
 
-  // AUTOMATE — one theme dominating low-capacity days.
-  const lowReasons: string[] = [];
+  // AUTOMATE — one theme dominating high-load days.
+  const highReasons: string[] = [];
   for (const m of members) {
     for (const d of lastN(dates, 14)) {
       const day = m.days.get(d);
-      if (day && day.capacity <= T.structuralLine && day.reason) {
-        lowReasons.push(day.reason);
+      if (day && day.capacity >= T.structuralLine && day.reason) {
+        highReasons.push(day.reason);
       }
     }
   }
   const themeCounts = new Map<string, number>();
-  for (const r of lowReasons) {
+  for (const r of highReasons) {
     for (const t of themesFor(r)) themeCounts.set(t, (themeCounts.get(t) ?? 0) + 1);
   }
   const topTheme = [...themeCounts.entries()].sort((a, b) => b[1] - a[1])[0];
@@ -238,22 +287,22 @@ export function computeSignals(
     topTheme &&
     topTheme[0] !== "Other" &&
     topTheme[1] >= T.themeMinCount &&
-    lowReasons.length > 0 &&
-    topTheme[1] / lowReasons.length >= T.themeShare
+    highReasons.length > 0 &&
+    topTheme[1] / highReasons.length >= T.themeShare
   ) {
     signals.push({
       severity: "warning",
       action: "AUTOMATE",
-      title: `"${topTheme[0]}" drives ${topTheme[1]} of ${lowReasons.length} low-capacity reports (last 14 days)`,
+      title: `"${topTheme[0]}" drives ${topTheme[1]} of ${highReasons.length} high-load reports (last 14 days)`,
       detail:
         "A recurring theme eating capacity is a workflow problem, not a headcount problem — automate or redesign it before hiring for it.",
     });
   }
 
-  // WATCH — multiple people in the strain zone today.
+  // WATCH — multiple people in the strain zone today (high load).
   if (today) {
     const strainedToday = members.filter(
-      (m) => (m.days.get(today)?.capacity ?? 99) <= T.strainZone
+      (m) => (m.days.get(today)?.capacity ?? -1) >= T.strainZone
     );
     if (strainedToday.length >= 2) {
       signals.push({

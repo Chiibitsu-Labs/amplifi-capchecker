@@ -5,10 +5,12 @@ import {
   answerCallbackQuery,
   capacityKeyboard,
   editMessageText,
+  redoKeyboard,
   sendMessage,
   teamKeyboard,
 } from "@/lib/telegram";
 import {
+  clearCheckinResponse,
   getAllMembers,
   getCurrentClientCount,
   getMemberByTelegramId,
@@ -65,25 +67,63 @@ async function handleCallback(cb: NonNullable<TelegramUpdate["callback_query"]>)
     return;
   }
 
-  if (data === "cap:out") {
+  // Q2's "change my number" button (date-scoped: cap:redo:<date>, or legacy
+  // cap:redo for pre-deploy messages). Retract the rejected entry NOW and
+  // re-open the picker for that same day.
+  const redoMatch = data.match(/^cap:redo(?::(\d{4}-\d{2}-\d{2}))?$/);
+  if (redoMatch) {
     const member = await ensureMember(cb.from);
-    const date = localDateString();
-    await markCheckinOut(member.id, date);
+    const date = redoMatch[1] ?? localDateString();
+    await clearCheckinResponse(member.id, date);
     await setMemberState(member.id, "idle");
-    await answerCallbackQuery(cb.id, "Marked out for today");
+    await answerCallbackQuery(cb.id);
     if (cb.message) {
       await editMessageText(
         cb.message.chat.id,
         cb.message.message_id,
-        `Out today 🤒 — rest up, no check-in needed.`
+        msg.redoPrompt(date),
+        capacityKeyboard(date)
       );
     }
     return;
   }
 
-  const capMatch = data.match(/^cap:(\d{1,2})$/);
+  const outMatch = data.match(/^cap:out(?::(\d{4}-\d{2}-\d{2}))?$/);
+  if (outMatch) {
+    const member = await ensureMember(cb.from);
+    const date = outMatch[1] ?? localDateString();
+    await markCheckinOut(member.id, date);
+    await setMemberState(member.id, "idle");
+    await answerCallbackQuery(cb.id, "Marked out");
+    if (cb.message) {
+      await editMessageText(
+        cb.message.chat.id,
+        cb.message.message_id,
+        `Out 🤒 — rest up, no check-in needed.`
+      );
+    }
+    return;
+  }
+
+  const capMatch = data.match(/^cap:(\d{1,2})(?::(\d{4}-\d{2}-\d{2}))?$/);
   if (!capMatch) {
     await answerCallbackQuery(cb.id);
+    return;
+  }
+  if (!capMatch[2]) {
+    // Legacy button from before per-message date-stamping — we can't tell
+    // which prompt/scale it was rendered under, so recording it risks
+    // silently mixing old- and new-scale data into a trusted date
+    // (Codex P2). Reject rather than guess, and point them at a fresh
+    // check-in instead.
+    await answerCallbackQuery(cb.id, "This button has expired — send /capacity to check in.");
+    if (cb.message) {
+      await editMessageText(
+        cb.message.chat.id,
+        cb.message.message_id,
+        `This check-in link has expired. Send /capacity to log today's number.`
+      );
+    }
     return;
   }
   const capacity = parseInt(capMatch[1], 10);
@@ -93,7 +133,7 @@ async function handleCallback(cb: NonNullable<TelegramUpdate["callback_query"]>)
   }
 
   const member = await ensureMember(cb.from);
-  const date = localDateString();
+  const date = capMatch[2];
 
   await upsertCheckinCapacity(member.id, date, capacity);
   await setMemberState(member.id, "awaiting_reason", { date });
@@ -104,10 +144,14 @@ async function handleCallback(cb: NonNullable<TelegramUpdate["callback_query"]>)
     await editMessageText(
       cb.message.chat.id,
       cb.message.message_id,
-      `Capacity today: <b>${capacity}/10</b> ✅`
+      `Capacity logged: <b>${capacity}/10</b> ✅`
     );
   }
-  await sendMessage(member.telegram_user_id, msg.capacityRecorded(capacity));
+  await sendMessage(
+    member.telegram_user_id,
+    msg.capacityRecorded(capacity),
+    redoKeyboard(date)
+  );
 }
 
 /** Flip a member's active status from the /team roster (admins only). */
@@ -172,6 +216,15 @@ async function handleMessage(message: NonNullable<TelegramUpdate["message"]>) {
       const date =
         (member.state_context?.date as string | undefined) ?? localDateString();
       await setCheckinReason(member.id, date, text);
+      if (date !== localDateString()) {
+        // Correcting a PAST day's number (tapped a stale redo button after
+        // the date rolled over). Skip Q3 — the roster is a "right now"
+        // concept, so answering it here would overwrite today's live
+        // roster with a snapshot dated in the past (Codex P2, 2026-07-10).
+        await setMemberState(member.id, "idle");
+        await sendMessage(from.id, msg.reasonUpdated(date));
+        break;
+      }
       // Q3 of the daily flow: client/task context, with a "same" shortcut.
       const existingCount = await getCurrentClientCount(member.id);
       await setMemberState(member.id, "awaiting_roster", { date, daily: true });
@@ -237,7 +290,7 @@ async function handleCommand(text: string, from: TelegramUser) {
     await sendMessage(
       member.telegram_user_id,
       msg.checkinPrompt(member, clientCount),
-      capacityKeyboard()
+      capacityKeyboard(localDateString())
     );
     return;
   }

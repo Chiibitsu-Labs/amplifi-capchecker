@@ -18,12 +18,16 @@ export async function getThresholds(): Promise<{
       .from("capchecker_settings")
       .select("key, value");
     if (error) throw error;
-    const validKeys = new Set(THRESHOLD_DOCS.map((d) => d.key as string));
+    // Matched by settingsKey (not `key`) so a row saved under a pre-flip
+    // name — e.g. "strainZone" before the 2026-07-10 rename to
+    // "strainZone_v2" — is silently orphaned rather than reapplied with
+    // the opposite meaning. See THRESHOLD_DOCS in lib/analytics.ts.
+    const bySettingsKey = new Map(THRESHOLD_DOCS.map((d) => [d.settingsKey, d.key]));
     for (const row of (data ?? []) as { key: string; value: string }[]) {
-      if (!validKeys.has(row.key)) continue;
+      const k = bySettingsKey.get(row.key);
+      if (!k) continue;
       const n = Number(row.value);
       if (!Number.isFinite(n)) continue;
-      const k = row.key as keyof Thresholds;
       thresholds[k] = n;
       overrides[k] = n;
     }
@@ -38,12 +42,13 @@ export async function saveThresholds(
   changes: Partial<Record<keyof Thresholds, number | null>>
 ): Promise<void> {
   const sb = supabase();
+  const settingsKeyFor = new Map(THRESHOLD_DOCS.map((d) => [d.key, d.settingsKey]));
   const upserts = Object.entries(changes)
     .filter(([, v]) => v !== null)
-    .map(([key, value]) => ({ key, value: String(value) }));
+    .map(([key, value]) => ({ key: settingsKeyFor.get(key as keyof Thresholds)!, value: String(value) }));
   const clears = Object.entries(changes)
     .filter(([, v]) => v === null)
-    .map(([key]) => key);
+    .map(([key]) => settingsKeyFor.get(key as keyof Thresholds)!);
 
   if (upserts.length) {
     const { error } = await sb

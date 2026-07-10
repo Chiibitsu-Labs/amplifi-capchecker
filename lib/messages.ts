@@ -1,4 +1,5 @@
 import type { Member } from "./db";
+import { localDateString } from "./dates";
 
 /** All user-facing bot copy lives here so tone stays consistent and tweakable. */
 
@@ -38,13 +39,53 @@ export function checkinPrompt(member: Member, clientCount: number): string {
   return (
     `Morning ${escapeHtml(firstName(member))}! ☀️\n\n` +
     `${clientLine}How's your capacity today?\n` +
-    `<i>1 = drowning · 10 = wide open</i>\n\n` +
+    `<i>1 = wide open · 10 = drowning (fully loaded)</i>\n\n` +
     `Tap a number 👇`
   );
 }
 
+/**
+ * Q2 confirms the tapped number IN WORDS before asking why, so a misread
+ * surfaces instantly and can be fixed with the redo button under this message.
+ * SCALE (decided with Michele): the team reads 10 as "full", so that's now the
+ * definition — 10 = drowning (fully loaded), 1 = wide open. Higher = busier.
+ * Bands mirror the dashboard heatmap legend.
+ */
 export function capacityRecorded(capacity: number): string {
-  return `Got it — <b>${capacity}/10</b>. In one line, what's driving that today?`;
+  let read: string;
+  let ask: string;
+  if (capacity >= 9) {
+    read = "you're <b>drowning — fully loaded, no room left</b>";
+    ask = "In one line, what's eating your day?";
+  } else if (capacity >= 7) {
+    read = "you're <b>stretched thin</b>";
+    ask = "In one line, what's driving that today?";
+  } else if (capacity >= 5) {
+    read = "you're <b>holding steady</b> — some room, not lots";
+    ask = "In one line, what's taking most of your day?";
+  } else if (capacity >= 3) {
+    read = "you have <b>good available capacity</b>";
+    ask = "In one line, what are you working on right now?";
+  } else {
+    read = "you're <b>wide open — lots of available capacity</b>";
+    ask = "In one line, what are you working on right now?";
+  }
+  return `Got it — <b>${capacity}/10</b>, meaning ${read}. ${ask}`;
+}
+
+/**
+ * `date` is the check-in day being (re)recorded — not necessarily today, if
+ * a stale redo button is tapped after the date rolled over. Naming the day
+ * explicitly stops a member from unknowingly entering the new day's load
+ * against yesterday's row (Codex P3).
+ */
+export function redoPrompt(date: string): string {
+  const when = date === localDateString() ? "today" : `on ${date}`;
+  return (
+    `No problem — how's your capacity ${when}?\n` +
+    `<i>1 = wide open · 10 = drowning (fully loaded)</i>\n\n` +
+    `Tap a number 👇`
+  );
 }
 
 /**
@@ -84,8 +125,13 @@ export function rosterUnchanged(count: number): string {
   return `Kept your ${count} client${count === 1 ? "" : "s"} as-is. That's you done for today, thanks 🙏`;
 }
 
-export function reasonThanksNoRoster(): string {
-  return `Thanks 🙏 Logged for today. See you tomorrow.`;
+/**
+ * Confirmation when a PAST day's reason is corrected via the redo button.
+ * No roster follow-up — the client roster is a "right now" concept, so
+ * replaying it against an old date would overwrite today's live roster.
+ */
+export function reasonUpdated(date: string): string {
+  return `Thanks 🙏 Updated for <b>${date}</b>.`;
 }
 
 export function paused(): string {

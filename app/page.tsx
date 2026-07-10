@@ -10,6 +10,7 @@ import {
   DayRow,
   MemberSeries,
   Signal,
+  SCALE_EPOCH,
   teamAverageByDate,
   themesFor,
 } from "@/lib/analytics";
@@ -77,7 +78,17 @@ export default async function Home({
 
   const { thresholds: T } = await getThresholds();
   const activeMembers = data.members.filter((m) => m.is_active);
-  const { members, dates } = buildSeries(data.rows);
+  // Built from post-epoch rows only, so `members` (days/latestReason/
+  // latestClientCount) and `dates` are trusted end to end — no call site
+  // downstream (KPIs, heatmap, trend, theme analysis, member cards) can
+  // accidentally reach back into pre-flip, old-scale data (Codex P2: an
+  // earlier version filtered only the `dates` array, which left
+  // `member.days.get(today)` and `member.latestReason` on the Team cards
+  // still reading straight from unfiltered rows). Older rows stay visible,
+  // unfiltered, in the raw check-in log below.
+  const { members, dates } = buildSeries(
+    data.rows.filter((r) => r.check_date >= SCALE_EPOCH)
+  );
   const daily = teamAverageByDate(members, dates);
   const signals = computeSignals(members, dates, activeMembers.length, T);
 
@@ -91,8 +102,10 @@ export default async function Home({
       ? last7.reduce((s, d) => s + d.responded + d.out, 0) /
         (last7.length * activeMembers.length)
       : null;
+  // `members` only contains post-epoch rows (see buildSeries call above),
+  // so a pre-epoch "today" naturally yields no entries here.
   const strainedToday = members.filter(
-    (m) => (m.days.get(today)?.capacity ?? 99) <= T.strainZone
+    (m) => (m.days.get(today)?.capacity ?? -1) >= T.strainZone
   ).length;
 
   const clientsByMemberName = new Map<string, ClientRow[]>();
@@ -104,12 +117,12 @@ export default async function Home({
     clientsByMemberName.set(member.name, list);
   }
 
-  // Theme counts on low-capacity days (last 14 recorded days)
+  // Theme counts on high-load days (last 14 recorded days)
   const themeCounts = new Map<string, number>();
   for (const m of members) {
     for (const d of dates.slice(-14)) {
       const day = m.days.get(d);
-      if (day && day.capacity <= T.structuralLine && day.reason) {
+      if (day && day.capacity >= T.structuralLine && day.reason) {
         for (const t of themesFor(day.reason)) {
           themeCounts.set(t, (themeCounts.get(t) ?? 0) + 1);
         }
@@ -120,6 +133,7 @@ export default async function Home({
 
   const heatDates = dates.slice(-15);
   const recentRows = [...data.rows].reverse().slice(0, 40);
+  const hasPreEpochRows = recentRows.some((r) => r.check_date < SCALE_EPOCH);
   const aboutHref = searchParams.key ? `/about?key=${encodeURIComponent(searchParams.key)}` : "/about";
 
   return (
@@ -143,9 +157,10 @@ export default async function Home({
 
       <section className="tiles">
         <Tile
-          label="Team capacity today"
+          label="Team load today"
           value={todayRow ? todayRow.avg.toFixed(1) : "—"}
           suffix={todayRow ? "/10" : ""}
+          higherIsBad
           delta={
             todayRow && prevRow
               ? { value: todayRow.avg - prevRow.avg, vs: "yesterday" }
@@ -157,22 +172,22 @@ export default async function Home({
           label="Response rate (7d)"
           value={responseRate != null ? `${Math.round(responseRate * 100)}%` : "—"}
         />
-        <Tile label={`Strain zone today (≤${T.strainZone})`} value={String(strainedToday)} alert={strainedToday > 0} />
+        <Tile label={`Strain zone today (≥${T.strainZone})`} value={String(strainedToday)} alert={strainedToday > 0} />
       </section>
 
       <section className="card">
         <h2>Who&rsquo;s strained, when</h2>
         <p className="cardsub">
-          Capacity per person per working day. Orange = strained, blue = open; the number is the
-          rating they gave.
+          Daily load per person. Orange = swamped, blue = open; the number is the rating they
+          gave (10 = drowning, 1 = wide open).
         </p>
         <Heatmap members={members} dates={heatDates} />
         <div className="binlegend">
-          <span><i className="sw b1" />1–2 drowning</span>
-          <span><i className="sw b2" />3–4 strained</span>
+          <span><i className="sw b5" />1–2 wide open</span>
+          <span><i className="sw b4" />3–4 open</span>
           <span><i className="sw b3" />5–6 holding</span>
-          <span><i className="sw b4" />7–8 open</span>
-          <span><i className="sw b5" />9–10 wide open</span>
+          <span><i className="sw b2" />7–8 stretched</span>
+          <span><i className="sw b1" />9–10 drowning</span>
           <span>🤒 out (sick/leave)</span>
         </div>
       </section>
@@ -180,18 +195,18 @@ export default async function Home({
       <div className="two">
         <section className="card">
           <h2>Team trend</h2>
-          <p className="cardsub">Daily team average. The hairline at {T.structuralLine} is the structural line — sustained time below it is the hire conversation.</p>
+          <p className="cardsub">Daily team load average. The hairline at {T.structuralLine} is the structural line — sustained time above it is the hire conversation.</p>
           <TrendLine daily={daily} structuralLine={T.structuralLine} />
         </section>
 
         <section className="card">
           <h2>What&rsquo;s eating capacity</h2>
           <p className="cardsub">
-            Themes in the &ldquo;why&rdquo; on low days (≤{T.structuralLine}/10, last 14 days). A dominant theme is an
+            Themes in the &ldquo;why&rdquo; on high-load days (≥{T.structuralLine}/10, last 14 days). A dominant theme is an
             automate/redesign signal — not a hiring one.
           </p>
           {themes.length === 0 ? (
-            <p className="empty">No low-capacity days recorded yet. Good problem to have.</p>
+            <p className="empty">No high-load days recorded yet. Good problem to have.</p>
           ) : (
             <ThemeBars themes={themes} />
           )}
@@ -215,6 +230,13 @@ export default async function Home({
 
       <section className="card">
         <h2>Check-in log</h2>
+        {hasPreEpochRows && (
+          <p className="cardsub">
+            Rows before {SCALE_EPOCH} used the old, ambiguous scale (before the 10 = drowning
+            convention) — kept here for the record, but excluded from every chart and signal
+            above.
+          </p>
+        )}
         <div className="tablewrap">
           <table>
             <thead>
@@ -240,9 +262,9 @@ export default async function Home({
       <footer>
         <h3>How the signals are computed</h3>
         <ul>
-          <li><b>Hire</b> — team average below {T.structuralLine}/10 on {T.structuralDays}+ of the last 10 working days (needs {T.minHistoryDays} days of history).</li>
-          <li><b>Rebalance</b> — a member averaging ≤{T.strainAvg} over recent check-ins while the team sits ≥{T.strainGap} points higher.</li>
-          <li><b>Automate / redesign</b> — one theme behind ≥{T.themeShare * 100}% of low-capacity reports (min {T.themeMinCount}).</li>
+          <li><b>Hire</b> — team average above {T.structuralLine}/10 on {T.structuralDays}+ of the last 10 working days (needs {T.minHistoryDays} days of history).</li>
+          <li><b>Rebalance</b> — a member averaging ≥{T.strainAvg} over recent check-ins while the team sits ≥{T.strainGap} points lower.</li>
+          <li><b>Automate / redesign</b> — one theme behind ≥{T.themeShare * 100}% of high-load reports (min {T.themeMinCount}).</li>
           <li><b>Data health</b> — response rate under {T.responseFloor * 100}% means don&rsquo;t trust the averages yet.</li>
         </ul>
         <p>Thresholds are starting points — tune them as the data accumulates.</p>
@@ -287,13 +309,18 @@ function Tile({
   suffix = "",
   delta,
   alert = false,
+  higherIsBad = false,
 }: {
   label: string;
   value: string;
   suffix?: string;
   delta?: { value: number; vs: string };
   alert?: boolean;
+  higherIsBad?: boolean;
 }) {
+  // With load semantics (10 = drowning) a rising number is worse, so the
+  // delta color follows meaning, not sign.
+  const good = delta ? (higherIsBad ? delta.value < 0 : delta.value > 0) : false;
   return (
     <div className="tile">
       <div className="tilelabel">{label}</div>
@@ -302,7 +329,7 @@ function Tile({
         {suffix && <span className="tilesuffix">{suffix}</span>}
       </div>
       {delta && Math.abs(delta.value) >= 0.05 && (
-        <div className={`tiledelta ${delta.value > 0 ? "up" : "down"}`}>
+        <div className={`tiledelta ${good ? "up" : "down"}`}>
           {delta.value > 0 ? "▲" : "▼"} {Math.abs(delta.value).toFixed(1)} vs {delta.vs}
         </div>
       )}
@@ -310,11 +337,12 @@ function Tile({
   );
 }
 
+// Load bins: HIGH = strained (10 = drowning → b1 orange), LOW = open (b5 blue).
 function binClass(cap: number): string {
-  if (cap <= 2) return "b1";
-  if (cap <= 4) return "b2";
-  if (cap <= 6) return "b3";
-  if (cap <= 8) return "b4";
+  if (cap >= 9) return "b1";
+  if (cap >= 7) return "b2";
+  if (cap >= 5) return "b3";
+  if (cap >= 3) return "b4";
   return "b5";
 }
 
