@@ -126,6 +126,24 @@ export async function upsertCheckinCapacity(
   if (error) throw error;
 }
 
+/**
+ * Retract a day's response (used when someone taps "change my number"): the
+ * rejected capacity + reason are cleared immediately so an interrupted redo
+ * never leaves a value they explicitly rejected in the summary/dashboard.
+ * Leaves client_count and the row itself intact.
+ */
+export async function clearCheckinResponse(
+  memberId: string,
+  checkDate: string
+): Promise<void> {
+  const { error } = await supabase()
+    .from("capchecker_checkins")
+    .update({ capacity: null, reason: null, status: "ok" })
+    .eq("member_id", memberId)
+    .eq("check_date", checkDate);
+  if (error) throw error;
+}
+
 /** Mark the member out (sick/leave) for the day — an excused absence, not a gap. */
 export async function markCheckinOut(
   memberId: string,

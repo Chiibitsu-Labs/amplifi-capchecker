@@ -9,15 +9,16 @@ automatic morning summary to leadership (Michele) and all data stored in
 Every **weekday at 8:00am (UTC+8)** each enrolled member gets a short Telegram
 message. A full check-in is **three quick replies**:
 
-1. **Capacity today, 1–10** — one tap on an inline button (1 = drowning, 10 = wide open)
+1. **Load today, 1–10** — one tap on an inline button (**1 = wide open, 10 = drowning** —
+   higher means busier/more loaded)
 2. **Why** — one line on what's driving that number
 3. **Clients & tasks** — who they're working with and the load (reply **`same`** to
    carry yesterday's roster forward, so stable days stay one-word)
 
 At **10:00am (UTC+8)** Michele (`MICHELE_CHAT_ID`) gets a summary: team average,
-each person's capacity + reason sorted lowest-first, client counts, anyone at or
-below 3/10 flagged for support, and who hasn't responded yet. The summary sends
-at the cutoff whether or not everyone has replied, so it never hangs.
+each person's load + reason sorted **most-loaded first**, client counts, anyone at or
+above the strain zone (≥8/10) flagged for support, and who hasn't responded yet. The
+summary sends at the cutoff whether or not everyone has replied, so it never hangs.
 
 Weekends are skipped automatically.
 

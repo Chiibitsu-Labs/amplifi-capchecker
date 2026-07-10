@@ -10,6 +10,7 @@ import {
   teamKeyboard,
 } from "@/lib/telegram";
 import {
+  clearCheckinResponse,
   getAllMembers,
   getCurrentClientCount,
   getMemberByTelegramId,
@@ -66,10 +67,14 @@ async function handleCallback(cb: NonNullable<TelegramUpdate["callback_query"]>)
     return;
   }
 
-  // Q2's "change my number" button: turn that message back into a picker.
-  // Tapping a new number overwrites today's row (upsert on member+date).
-  if (data === "cap:redo") {
+  // Q2's "change my number" button (date-scoped: cap:redo:<date>, or legacy
+  // cap:redo for pre-deploy messages). Retract the rejected entry NOW and
+  // re-open the picker for that same day.
+  const redoMatch = data.match(/^cap:redo(?::(\d{4}-\d{2}-\d{2}))?$/);
+  if (redoMatch) {
     const member = await ensureMember(cb.from);
+    const date = redoMatch[1] ?? localDateString();
+    await clearCheckinResponse(member.id, date);
     await setMemberState(member.id, "idle");
     await answerCallbackQuery(cb.id);
     if (cb.message) {
@@ -77,29 +82,30 @@ async function handleCallback(cb: NonNullable<TelegramUpdate["callback_query"]>)
         cb.message.chat.id,
         cb.message.message_id,
         msg.redoPrompt(),
-        capacityKeyboard()
+        capacityKeyboard(date)
       );
     }
     return;
   }
 
-  if (data === "cap:out") {
+  const outMatch = data.match(/^cap:out(?::(\d{4}-\d{2}-\d{2}))?$/);
+  if (outMatch) {
     const member = await ensureMember(cb.from);
-    const date = localDateString();
+    const date = outMatch[1] ?? localDateString();
     await markCheckinOut(member.id, date);
     await setMemberState(member.id, "idle");
-    await answerCallbackQuery(cb.id, "Marked out for today");
+    await answerCallbackQuery(cb.id, "Marked out");
     if (cb.message) {
       await editMessageText(
         cb.message.chat.id,
         cb.message.message_id,
-        `Out today 🤒 — rest up, no check-in needed.`
+        `Out 🤒 — rest up, no check-in needed.`
       );
     }
     return;
   }
 
-  const capMatch = data.match(/^cap:(\d{1,2})$/);
+  const capMatch = data.match(/^cap:(\d{1,2})(?::(\d{4}-\d{2}-\d{2}))?$/);
   if (!capMatch) {
     await answerCallbackQuery(cb.id);
     return;
@@ -111,7 +117,7 @@ async function handleCallback(cb: NonNullable<TelegramUpdate["callback_query"]>)
   }
 
   const member = await ensureMember(cb.from);
-  const date = localDateString();
+  const date = capMatch[2] ?? localDateString();
 
   await upsertCheckinCapacity(member.id, date, capacity);
   await setMemberState(member.id, "awaiting_reason", { date });
@@ -122,13 +128,13 @@ async function handleCallback(cb: NonNullable<TelegramUpdate["callback_query"]>)
     await editMessageText(
       cb.message.chat.id,
       cb.message.message_id,
-      `Capacity today: <b>${capacity}/10</b> ✅`
+      `Capacity logged: <b>${capacity}/10</b> ✅`
     );
   }
   await sendMessage(
     member.telegram_user_id,
     msg.capacityRecorded(capacity),
-    redoKeyboard()
+    redoKeyboard(date)
   );
 }
 
