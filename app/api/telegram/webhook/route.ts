@@ -5,6 +5,7 @@ import {
   answerCallbackQuery,
   capacityKeyboard,
   editMessageText,
+  redoKeyboard,
   sendMessage,
   teamKeyboard,
 } from "@/lib/telegram";
@@ -65,6 +66,23 @@ async function handleCallback(cb: NonNullable<TelegramUpdate["callback_query"]>)
     return;
   }
 
+  // Q2's "change my number" button: turn that message back into a picker.
+  // Tapping a new number overwrites today's row (upsert on member+date).
+  if (data === "cap:redo") {
+    const member = await ensureMember(cb.from);
+    await setMemberState(member.id, "idle");
+    await answerCallbackQuery(cb.id);
+    if (cb.message) {
+      await editMessageText(
+        cb.message.chat.id,
+        cb.message.message_id,
+        msg.redoPrompt(),
+        capacityKeyboard()
+      );
+    }
+    return;
+  }
+
   if (data === "cap:out") {
     const member = await ensureMember(cb.from);
     const date = localDateString();
@@ -107,7 +125,11 @@ async function handleCallback(cb: NonNullable<TelegramUpdate["callback_query"]>)
       `Capacity today: <b>${capacity}/10</b> ✅`
     );
   }
-  await sendMessage(member.telegram_user_id, msg.capacityRecorded(capacity));
+  await sendMessage(
+    member.telegram_user_id,
+    msg.capacityRecorded(capacity),
+    redoKeyboard()
+  );
 }
 
 /** Flip a member's active status from the /team roster (admins only). */

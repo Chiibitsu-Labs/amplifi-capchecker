@@ -100,6 +100,15 @@ export function teamKeyboard(
   };
 }
 
+/** Rides under the Q2 confirmation so a misread number is one tap to fix. */
+export function redoKeyboard(): ReplyMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "↩️ Not right? Change my number", callback_data: "cap:redo" }],
+    ],
+  };
+}
+
 export function capacityKeyboard(): ReplyMarkup {
   const row = (start: number) =>
     Array.from({ length: 5 }, (_, i) => {
