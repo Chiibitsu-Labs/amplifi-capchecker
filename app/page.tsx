@@ -97,9 +97,12 @@ export default async function Home({
       ? last7.reduce((s, d) => s + d.responded + d.out, 0) /
         (last7.length * activeMembers.length)
       : null;
-  const strainedToday = members.filter(
-    (m) => (m.days.get(today)?.capacity ?? -1) >= T.strainZone
-  ).length;
+  // Guarded by the same epoch as everything else above (`dates` is already
+  // filtered) — otherwise a pre-epoch "today" would compare old-scale
+  // capacities against the new-scale strainZone threshold (Codex P2).
+  const strainedToday = dates.includes(today)
+    ? members.filter((m) => (m.days.get(today)?.capacity ?? -1) >= T.strainZone).length
+    : 0;
 
   const clientsByMemberName = new Map<string, ClientRow[]>();
   for (const c of data.clients) {

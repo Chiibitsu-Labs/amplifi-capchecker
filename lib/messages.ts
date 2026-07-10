@@ -1,4 +1,5 @@
 import type { Member } from "./db";
+import { localDateString } from "./dates";
 
 /** All user-facing bot copy lives here so tone stays consistent and tweakable. */
 
@@ -72,9 +73,16 @@ export function capacityRecorded(capacity: number): string {
   return `Got it — <b>${capacity}/10</b>, meaning ${read}. ${ask}`;
 }
 
-export function redoPrompt(): string {
+/**
+ * `date` is the check-in day being (re)recorded — not necessarily today, if
+ * a stale redo button is tapped after the date rolled over. Naming the day
+ * explicitly stops a member from unknowingly entering the new day's load
+ * against yesterday's row (Codex P3).
+ */
+export function redoPrompt(date: string): string {
+  const when = date === localDateString() ? "today" : `on ${date}`;
   return (
-    `No problem — how's your capacity today?\n` +
+    `No problem — how's your capacity ${when}?\n` +
     `<i>1 = wide open · 10 = drowning (fully loaded)</i>\n\n` +
     `Tap a number 👇`
   );

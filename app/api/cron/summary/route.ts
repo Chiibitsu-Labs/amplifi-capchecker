@@ -12,6 +12,7 @@ import { sendMessage } from "@/lib/telegram";
 import { escapeHtml } from "@/lib/messages";
 import { localDateString, isLocalWeekday } from "@/lib/dates";
 import { getThresholds } from "@/lib/settings";
+import { SCALE_EPOCH } from "@/lib/analytics";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -31,6 +32,15 @@ export async function GET(req: NextRequest) {
   }
 
   const date = localDateString();
+
+  if (date < SCALE_EPOCH) {
+    // Pre-flip day — this summary's "highest load first" sort and strain
+    // flag both assume the new scale (10 = drowning). Applying them to a
+    // day collected under the old, ambiguous prompt would mislabel it in
+    // Michele's summary (Codex P2, mirrors the SCALE_EPOCH guard in
+    // lib/analytics.ts and app/page.tsx). Skip rather than send it wrong.
+    return NextResponse.json({ ok: true, skipped: "pre_epoch", date });
+  }
 
   // Idempotency: send at most one summary per day. Guards against cron
   // double-fires and cron-after-manual-trigger. ?force=1 overrides for

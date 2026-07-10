@@ -81,7 +81,7 @@ async function handleCallback(cb: NonNullable<TelegramUpdate["callback_query"]>)
       await editMessageText(
         cb.message.chat.id,
         cb.message.message_id,
-        msg.redoPrompt(),
+        msg.redoPrompt(date),
         capacityKeyboard(date)
       );
     }
@@ -110,6 +110,22 @@ async function handleCallback(cb: NonNullable<TelegramUpdate["callback_query"]>)
     await answerCallbackQuery(cb.id);
     return;
   }
+  if (!capMatch[2]) {
+    // Legacy button from before per-message date-stamping — we can't tell
+    // which prompt/scale it was rendered under, so recording it risks
+    // silently mixing old- and new-scale data into a trusted date
+    // (Codex P2). Reject rather than guess, and point them at a fresh
+    // check-in instead.
+    await answerCallbackQuery(cb.id, "This button has expired — send /capacity to check in.");
+    if (cb.message) {
+      await editMessageText(
+        cb.message.chat.id,
+        cb.message.message_id,
+        `This check-in link has expired. Send /capacity to log today's number.`
+      );
+    }
+    return;
+  }
   const capacity = parseInt(capMatch[1], 10);
   if (capacity < 1 || capacity > 10) {
     await answerCallbackQuery(cb.id);
@@ -117,7 +133,7 @@ async function handleCallback(cb: NonNullable<TelegramUpdate["callback_query"]>)
   }
 
   const member = await ensureMember(cb.from);
-  const date = capMatch[2] ?? localDateString();
+  const date = capMatch[2];
 
   await upsertCheckinCapacity(member.id, date, capacity);
   await setMemberState(member.id, "awaiting_reason", { date });
