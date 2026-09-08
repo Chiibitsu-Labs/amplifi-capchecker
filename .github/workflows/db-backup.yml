@@ -1,0 +1,222 @@
+# ══════════════════════════════════════════════════════════════════════════
+# Nightly encrypted pg_dump — Chiibitsu Labs Supabase backup standard
+#
+# Backup and keep-alive are the same job: the dump is database activity, so it
+# also resets the Free-plan inactivity clock that causes projects to pause.
+#
+# TO COPY THIS TO ANOTHER SUPABASE PROJECT:
+#   1. Copy this file and .github/scripts/verify_dump.py into the other repo.
+#   2. Change PROJECT_SLUG, PG_MAJOR and CRITICAL_TABLES in `env:` below.
+#   3. Create the four repository secrets listed in the README.
+# Nothing else needs editing.
+# ══════════════════════════════════════════════════════════════════════════
+name: Nightly database backup
+
+on:
+  schedule:
+    # 18:30 UTC = 02:30 UTC+8. Deliberately away from the app's own Vercel
+    # crons (00:00 and 02:00 UTC) so a slow dump never overlaps a check-in.
+    - cron: '30 18 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      # ── The three lines that change when copying to another project ──────
+      PROJECT_SLUG: capchecker
+      # Must match the Postgres major version of the Supabase project. pg_dump
+      # refuses to dump a server newer than itself, so this is not cosmetic.
+      PG_MAJOR: '17'
+      # Fail the job if any of these is missing or empty in the dump. Format:
+      # schema.table[:min_rows] (min_rows defaults to 1).
+      CRITICAL_TABLES: 'public.capchecker_members public.capchecker_checkins public.capchecker_clients'
+      # ─────────────────────────────────────────────────────────────────────
+
+      # Supabase-managed schemas the `postgres` role generally cannot read, or
+      # that a restore recreates on its own. `auth`, `storage`, `public` and
+      # `supabase_migrations` are deliberately NOT here — they hold real data.
+      # If a nightly run starts failing on "permission denied for schema X",
+      # add X here rather than switching to a selective table dump.
+      EXCLUDE_SCHEMAS: 'extensions graphql graphql_public net pgbouncer pgsodium pgsodium_masks realtime vault'
+      # How long GitHub keeps each dump before deleting it. This IS the
+      # retention policy — see the README for why that is the point.
+      RETENTION_DAYS: '90'
+
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Install pg_dump ${{ env.PG_MAJOR }} and age
+        run: |
+          set -euo pipefail
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            "postgresql-client-${PG_MAJOR}" age
+          echo "PATH=/usr/lib/postgresql/${PG_MAJOR}/bin:$PATH" >> "$GITHUB_ENV"
+          "/usr/lib/postgresql/${PG_MAJOR}/bin/pg_dump" --version
+          age --version
+
+      - name: Check the connection string is present and reachable
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPABASE_DB_URL}" ]; then
+            echo "::error::Secret SUPABASE_DB_URL is not set. See README → Database backups."
+            exit 1
+          fi
+          if ! psql "${SUPABASE_DB_URL}" -tAc 'select 1' > /dev/null 2> connect.err; then
+            echo "::error::Could not connect to the database."
+            echo "--- psql said (connection string redacted) ---"
+            sed -E 's#postgres(ql)?://[^[:space:]]*#<connection string redacted>#g' connect.err
+            echo "----------------------------------------------"
+            echo "Most common cause: GitHub Actions runners are IPv4-only, and a"
+            echo "Supabase project's DIRECT connection (db.<ref>.supabase.co) is"
+            echo "IPv6-only unless the paid IPv4 add-on is enabled. Use the"
+            echo "SESSION POOLER string (port 5432) from Supabase → Project"
+            echo "Settings → Database → Connection string → Session pooler."
+            echo "Do NOT use the transaction pooler (port 6543) — it does not"
+            echo "support the prepared statements pg_dump relies on."
+            exit 1
+          fi
+          echo "Connected."
+
+      - name: Dump the whole database
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          echo "STAMP=$(date -u +%Y-%m-%dT%H%M%SZ)" >> "$GITHUB_ENV"
+
+          exclude_args=()
+          for schema in ${EXCLUDE_SCHEMAS}; do
+            exclude_args+=(--exclude-schema="${schema}")
+          done
+
+          # Whole database, not selected tables: selective dumps rot as schemas
+          # change. --no-owner/--no-privileges so it restores into a fresh
+          # project without Supabase's internal roles existing there.
+          # Deliberately NO --clean: a dump that starts with DROP statements is
+          # one wrong target away from destroying a live database.
+          if ! pg_dump "${SUPABASE_DB_URL}" \
+                --format=plain \
+                --no-owner \
+                --no-privileges \
+                --quote-all-identifiers \
+                "${exclude_args[@]}" \
+                --file=dump.sql 2> dump.err; then
+            echo "::error::pg_dump failed."
+            sed -E 's#postgres(ql)?://[^[:space:]]*#<connection string redacted>#g' dump.err
+            exit 1
+          fi
+
+          if [ -s dump.err ]; then
+            echo "pg_dump warnings:"
+            sed -E 's#postgres(ql)?://[^[:space:]]*#<connection string redacted>#g' dump.err
+          fi
+          echo "Dump written: $(wc -c < dump.sql) bytes."
+
+      - name: Verify the dump contains the records it exists to protect
+        run: python3 .github/scripts/verify_dump.py dump.sql ${CRITICAL_TABLES}
+
+      - name: Compress and encrypt
+        env:
+          AGE_PUBLIC_KEY: ${{ secrets.AGE_PUBLIC_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${AGE_PUBLIC_KEY}" ]; then
+            echo "::error::Secret AGE_PUBLIC_KEY is not set. Refusing to store an unencrypted dump."
+            exit 1
+          fi
+
+          artifact="${PROJECT_SLUG}-${STAMP}.sql.gz.age"
+          gzip -9 dump.sql                      # -> dump.sql.gz
+          age --recipient "${AGE_PUBLIC_KEY}" --output "${artifact}" dump.sql.gz
+          shred -u dump.sql.gz 2>/dev/null || rm -f dump.sql.gz
+
+          # Nothing unencrypted may survive into the upload step.
+          if [ -e dump.sql ] || [ -e dump.sql.gz ]; then
+            echo "::error::Plaintext dump still on disk after encryption. Refusing to upload."
+            exit 1
+          fi
+          if [ ! -s "${artifact}" ]; then
+            echo "::error::Encrypted file is empty."
+            exit 1
+          fi
+
+          echo "ARTIFACT=${artifact}" >> "$GITHUB_ENV"
+          echo "Encrypted: ${artifact} ($(wc -c < "${artifact}") bytes)"
+
+      - name: Upload the encrypted dump
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT }}
+          path: ${{ env.ARTIFACT }}
+          retention-days: ${{ env.RETENTION_DAYS }}
+          if-no-files-found: error
+
+      - name: Summary
+        if: success()
+        run: |
+          {
+            echo "### Backup succeeded"
+            echo
+            echo "- **Artifact:** \`${ARTIFACT}\`"
+            echo "- **Size:** $(wc -c < "${ARTIFACT}") bytes (gzipped, age-encrypted)"
+            echo "- **Deleted by GitHub on:** $(date -u -d "+${RETENTION_DAYS} days" +%Y-%m-%d)"
+            echo
+            echo "Restore instructions: README → Database backups → Restoring."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # A backup job that has silently failed for three months is worse than no
+      # backup, because it buys false confidence. This is the loud part.
+      - name: Shout on failure
+        if: failure()
+        continue-on-error: true
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ALERT_CHAT_ID: ${{ secrets.TELEGRAM_ALERT_CHAT_ID }}
+        run: |
+          set -uo pipefail
+          if [ -z "${TELEGRAM_BOT_TOKEN}" ] || [ -z "${TELEGRAM_ALERT_CHAT_ID}" ]; then
+            echo "::warning::Backup failed AND no Telegram alert is configured. Set TELEGRAM_BOT_TOKEN and TELEGRAM_ALERT_CHAT_ID."
+            exit 0
+          fi
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          text=$(printf '%s\n' \
+            "🔴 Backup FAILED — ${PROJECT_SLUG}" \
+            "" \
+            "The nightly database backup did not produce a usable dump." \
+            "Repo: ${GITHUB_REPOSITORY}" \
+            "Run: ${run_url}" \
+            "" \
+            "Until this is fixed there is no recovery point for today.")
+          curl -sS --fail-with-body -X POST \
+            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_ALERT_CHAT_ID}" \
+            --data-urlencode "text=${text}" \
+            --data-urlencode "disable_web_page_preview=true" \
+            -o /dev/null \
+            && echo "Alert sent." \
+            || echo "::warning::Could not send the Telegram alert."
+
+      - name: Remove any plaintext left on the runner
+        if: always()
+        run: |
+          shred -u dump.sql dump.sql.gz connect.err dump.err 2>/dev/null || true
+          rm -f dump.sql dump.sql.gz connect.err dump.err
